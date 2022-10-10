@@ -12,16 +12,15 @@ parser.add_argument('-d', type=json.loads)
 args = parser.parse_args()
 kwargs= args.d
 
-def set_all_parameters(alphaR, sigma2, eta, n_train, encoding, seed, damaged_net):
+def set_all_parameters(alpha, sigma2, n_train, encoding, seed, damaged_net):
 	params = dict()
 
 	net_params = dict()
 	net_params['N'] = 1000
 	net_params['dt'] = 0.1
-	net_params['alpha'] = 0.1
-	net_params['alphaR'] = alphaR
+	net_params['alpha'] = alpha
+	#net_params['alphaR'] = alphaR
 	net_params['sigma2'] = sigma2
-	net_params['eta'] = eta
 	net_params['d_input'] = 2
 	net_params['d_output'] = 1
 	params['network'] = net_params
