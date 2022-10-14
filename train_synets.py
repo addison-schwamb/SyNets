@@ -43,7 +43,7 @@ def plot_matrix(mat):
     plt.colorbar(im)
     plt.show()
 
-def train(params, dmg_params, dmg_x, exp_mat, input_digits):
+def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     tic = time.time()
 
     dmg_model_prs = dmg_params['model']
@@ -92,15 +92,19 @@ def train(params, dmg_params, dmg_x, exp_mat, input_digits):
         z = np.matmul(dmg_wo.T, dmg_r)
         zd = np.matmul(dmg_wd.T, dmg_r)
 
-        if (i+1) % trial_steps == 0 and i != 0:
+        #if (i+1) % trial_steps == 0 and i != 0:
+        if np.any(target_mat[:, i] != 0.):
+            #print(target_mat[:,i])
+            #print(z)
             eps_r = np.zeros([N, N])
             eps_in = np.zeros([N, net_prs['d_input']])
-            R = 0.25 - abs(output[sum(input_digits[trial][1])] - z)
+            R = 0.25 - abs(target_mat[:,i] - z)
             rwd_mat[trial] = R
             #Rbar = np.mean(rwd_mat[:trial+1])
+            steps_in = (i+1) % trial_steps
 
-            for j in range(1, trial_steps):
-                idx = int(i - trial_steps + j)
+            for j in range(1, steps_in):
+                idx = int(i - steps_in + j)
                 r_cum = 0
                 input_cum = 0
                 for k in range(1, j):
@@ -118,6 +122,7 @@ def train(params, dmg_params, dmg_x, exp_mat, input_digits):
 
             W += deltaW
             wi += deltawi
+        if (i+1) % trial_steps == 0 and i != 0:
             trial += 1
 
         eps = np.matmul(Sigma,rng.randn(N,1))

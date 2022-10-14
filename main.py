@@ -110,5 +110,5 @@ dmg_params, dmg_x, _, _, _ = load_data(name=msc_prs['damaged_net'],prefix='damag
 dmg_params = add_input_weights(dmg_params)
 
 # train new network
-x_train, dmg_x, params = train(params, dmg_params, dmg_x, exp_mat, input_digits)
+x_train, dmg_x, params = train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits)
 x_ICs, r_ICs, internal_x, dmg_x = test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
