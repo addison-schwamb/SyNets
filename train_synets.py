@@ -75,6 +75,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     x_mat, r_mat, eps_mat, u_mat, z_mat, rwd_mat = zero_fat_mats(params, is_train=True)
     trial = 0
     i = 0
+    last_stop = 0
     for i in range(train_steps):
         x_mat[:, i] = x.reshape(-1)
         r_mat[:, i] = r.reshape(-1)
@@ -95,16 +96,15 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
         #if (i+1) % trial_steps == 0 and i != 0:
         if np.any(target_mat[:, i] != 0.):
             #print(target_mat[:,i])
-            #print(z)
             eps_r = np.zeros([N, N])
             eps_in = np.zeros([N, net_prs['d_input']])
             R = 0.25 - abs(target_mat[:,i] - z)
             rwd_mat[trial] = R
             #Rbar = np.mean(rwd_mat[:trial+1])
-            steps_in = (i+1) % trial_steps
+            steps_since_update = i - last_stop
 
-            for j in range(1, steps_in):
-                idx = int(i - steps_in + j)
+            for j in range(1, steps_since_update):
+                idx = int(i - steps_since_update + j)
                 r_cum = 0
                 input_cum = 0
                 for k in range(1, j):
@@ -122,6 +122,8 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
 
             W += deltaW
             wi += deltawi
+            last_stop = i
+
         if (i+1) % trial_steps == 0 and i != 0:
             trial += 1
 
@@ -133,10 +135,10 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     model_params = {'W': W, 'wo': wo, 'wi': wi, 'Sigma': Sigma}
     params['model'] = model_params
     task_prs['counter'] = i
-    
+
     plt.plot(rwd_mat)
     plt.show()
-    
+
     return x, dmg_x, params
 
 def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
@@ -254,3 +256,36 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
     r_ICs = np.array([r00, r01, r10, r11])
 
     return x_ICs, r_ICs, x_mat, dmg_x
+
+def test_single(params, x, exp_mat, input_digits):
+    net_prs = params['network']
+    train_prs = params['train']
+    task_prs = params['task']
+    msc_prs = params['msc']
+    model_prs = params['model']
+    wo, wd = model_prs['wo'], model_prs['wd']
+    wf, wfd, wi = model_prs['wf'], model_prs['wfd'], model_prs['wi']
+    J = model_prs['J']
+    dt, tau, g = net_prs['dt'], net_prs['tau'], net_prs['g']
+    test_steps = int(train_prs['n_test'] * task_prs['t_trial'] / net_prs['dt'])
+    time_steps = np.arange(0, test_steps, 1)
+
+    r = np.tanh(x)
+    z = np.matmul(wo.T, r)
+    zd = np.matmul(wd.T, r)
+
+    trial = 0
+
+    for i in range(test_steps):
+        dx = -x + g * np.matmul(J, r) + np.matmul(wf, z) + np.matmul(wi, exp_mat[:,i].reshape([net_prs['d_input'],])) + np.matmul(wfd, zd)
+        x = x + (dx * dt) / tau
+        r = np.tanh(x)
+        z = np.matmul(wo.T, r)
+        zd = np.matmul(wd.T, r)
+
+        if (i+1) % int((task_prs['t_trial']) / dt) == 0:
+            print('Test Digits: ', input_digits[trial])
+            print('z: ', np.around(2*z) / 2.0)
+            trial += 1
+
+    return x

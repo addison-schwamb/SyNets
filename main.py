@@ -107,6 +107,11 @@ exp_mat, target_mat, dummy_mat, input_digits, output_digits = task.experiment()
 
 # load in damaged network
 dmg_params, dmg_x, _, _, _ = load_data(name=msc_prs['damaged_net'],prefix='damaged',dir=dir)
+
+# test damaged network with no input
+dmg_x = test_single(dmg_params, dmg_x, exp_mat, input_digits)
+
+# adjust params to allow for additional input
 dmg_params = add_input_weights(dmg_params)
 
 # train new network

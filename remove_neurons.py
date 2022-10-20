@@ -63,8 +63,6 @@ model_prs['wd'] = wd
 model_prs['wf'] = wf
 model_prs['wfd'] = wfd
 model_prs['N'] = np.size(internal_x)
-print(model_prs['N'])
 params['model'] = model_prs
-print(np.shape(internal_x))
 
 save_data_variable_size(params, internal_x, x_ICs, r_ICs, error_ratio, name=init_params['name'], prefix='damaged', dir=dir)
