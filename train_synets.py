@@ -34,9 +34,11 @@ def zero_fat_mats(params, is_train=True):
     eps_mat = np.zeros([net_prs['N'], total_steps])
     u_mat = np.zeros(total_steps)
     z_mat = np.zeros(total_steps)
+    zd_mat = np.zeros([2, total_steps])
     rwd_mat = np.zeros(total_size)
+    deltaW_mat = np.zeros(total_size)
 
-    return x_mat, r_mat, eps_mat, u_mat, z_mat, rwd_mat
+    return x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat
 
 def plot_matrix(mat):
     im = plt.imshow(mat)
@@ -53,7 +55,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     msc_prs = params['msc']
     rng = np.random.RandomState(msc_prs['seed'])
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
-    alpha, sigma2 = net_prs['alpha'], net_prs['sigma2']
+    alpha, sigma2, max_grad = net_prs['alpha'], net_prs['sigma2'], net_prs['max_grad']
     #alphaR = net_prs['alphaR']
     N = net_prs['N']
     output = task_prs['output_encoding']
@@ -72,7 +74,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     z = np.matmul(dmg_wo.T, dmg_r)
     zd = np.matmul(dmg_wd.T, dmg_r)
 
-    x_mat, r_mat, eps_mat, u_mat, z_mat, rwd_mat = zero_fat_mats(params, is_train=True)
+    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=True)
     trial = 0
     i = 0
     last_stop = 0
@@ -82,8 +84,10 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
         eps_mat[:, i] = eps.reshape(-1)
         u_mat[i] = u
         z_mat[i] = z
+        zd_mat[:, i] = zd.reshape(-1)
 
-        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, exp_mat[:, i].reshape([net_prs['d_input'],1]))) + eps
+        input = np.concatenate((zd,exp_mat[:,i]), axis=None)
+        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) + eps
         r = np.tanh(x)
         u = np.matmul(wo.T, r)
         dmg_input = np.concatenate((u,exp_mat[:,i]),axis=None)
@@ -103,13 +107,13 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
             #Rbar = np.mean(rwd_mat[:trial+1])
             steps_since_update = i - last_stop
 
-            for j in range(1, steps_since_update):
+            for j in range(1, steps_since_update+1):
                 idx = int(i - steps_since_update + j)
                 r_cum = 0
                 input_cum = 0
-                for k in range(1, j):
-                    r_cum += ((1 - dt) ** (k - 1)) * r_mat[:, idx-k]
-                    input_cum += ((1 - dt) ** (k - 1)) * exp_mat[:, idx-k]
+                for k in range(1, j+1):
+                    r_cum += ((1 - dt) ** (k - 1)) * dt * r_mat[:, idx-k]
+                    input_cum += ((1 - dt) ** (k - 1)) * dt * np.concatenate((zd_mat[:, idx-k], exp_mat[:, idx-k]), axis=None)
                 eps_r += np.outer(eps_mat[:, idx], r_cum)
                 eps_in += np.outer(eps_mat[:, idx], input_cum)
 
@@ -117,8 +121,11 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
             #print('z: ', np.around(2*z) / 2.0)
             #print('R: ', R)
 
-            deltaW =  (-alpha * dt / sigma2) * R * eps_r
-            deltawi = (-alpha * dt / sigma2) * R * eps_in
+            deltaW =  (alpha * dt / sigma2) * R * eps_r
+            if np.linalg.norm(deltaW,ord='fro') > max_grad:
+                deltaW = (max_grad/np.linalg.norm(deltaW,ord='fro'))*deltaW
+            deltawi = (alpha * dt / sigma2) * R * eps_in
+            deltaW_mat[trial] = np.linalg.norm(deltaW,ord='fro')
 
             W += deltaW
             wi += deltawi
@@ -137,6 +144,8 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     task_prs['counter'] = i
 
     plt.plot(rwd_mat)
+    plt.figure()
+    plt.plot(deltaW_mat)
     plt.show()
 
     return x, dmg_x, params
@@ -171,7 +180,7 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
     z = np.matmul(dmg_wo.T, dmg_r)
     zd = np.matmul(dmg_wd.T, dmg_r)
 
-    x_mat, r_mat, eps_mat, u_mat, z_mat, rwd_mat = zero_fat_mats(params, is_train=False)
+    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=False)
     trial = 0
 
     for i in range(test_steps):
@@ -179,8 +188,10 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
         r_mat[:, i] = r.reshape(-1)
         u_mat[i] = u
         z_mat[i] = z
+        zd_mat[:, i] = zd.reshape(-1)
 
-        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, exp_mat[:, i].reshape([net_prs['d_input'],1]))) #+ eps
+        input = np.concatenate((zd,exp_mat[:,i]), axis=None)
+        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) #+ eps
         r = np.tanh(x)
         u = np.matmul(wo.T, r)
         dmg_input = np.concatenate((u,exp_mat[:,i]),axis=None)
