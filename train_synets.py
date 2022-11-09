@@ -143,10 +143,10 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     params['model'] = model_params
     task_prs['counter'] = i
 
-    plt.plot(rwd_mat)
-    plt.figure()
-    plt.plot(deltaW_mat)
-    plt.show()
+    #plt.plot(rwd_mat)
+    #plt.figure()
+    #plt.plot(deltaW_mat)
+    #plt.show()
 
     return x, dmg_x, params
 
@@ -180,10 +180,14 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
     z = np.matmul(dmg_wo.T, dmg_r)
     zd = np.matmul(dmg_wd.T, dmg_r)
 
-    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=False)
+    dmg_x_mat, dmg_r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(dmg_params, is_train=False)
+    x_mat = np.zeros([net_prs['N'],np.shape(dmg_x_mat)[1]])
+    r_mat = np.zeros([net_prs['N'],np.shape(dmg_x_mat)[1]])
     trial = 0
 
     for i in range(test_steps):
+        dmg_x_mat[:, i] = dmg_x.reshape(-1)
+        dmg_r_mat[:, i] = dmg_r.reshape(-1)
         x_mat[:, i] = x.reshape(-1)
         r_mat[:, i] = r.reshape(-1)
         u_mat[i] = u
@@ -209,54 +213,72 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
 
                 r00 = r_mat[:, i-1][:, np.newaxis]
                 x00 = x_mat[:, i-1][:, np.newaxis]
+                dmg_r00 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x00 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i00 = 1
 
             elif test_digits[trial][1] == (0,1) and i01 == 0:
 
                 r01 = r_mat[:, i-1][:, np.newaxis]
                 x01 = x_mat[:, i-1][:, np.newaxis]
+                dmg_r01 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x01 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i01 = 1
 
             elif test_digits[trial][1] == (1,0) and i10 == 0:
 
                 r10 = r_mat[:, i-1][:, np.newaxis]
                 x10 = x_mat[:, i-1][:, np.newaxis]
+                dmg_r10 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x10 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i10 = 1
 
             elif test_digits[trial][1] == (1,1) and i11 == 0:
 
                 r11 = r_mat[:, i-1][:, np.newaxis]
                 x11 = x_mat[:, i-1][:, np.newaxis]
+                dmg_r11 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x11 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i11 = 1
 
             elif test_digits[trial][1] == (0, 2) and i02 == 0:
 
                 r02 = r_mat[:, i - 1][:, np.newaxis]
                 x02 = x_mat[:, i - 1][:, np.newaxis]
+                dmg_r02 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x02 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i02 = 1
 
             elif test_digits[trial][1] == (2, 0) and i20 == 0:
 
                 r20 = r_mat[:, i - 1][:, np.newaxis]
                 x20 = x_mat[:, i - 1][:, np.newaxis]
+                dmg_r20 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x20 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i20 = 1
 
             elif test_digits[trial][1] == (2, 2) and i22 == 0:
 
                 r22 = r_mat[:, i - 1][:, np.newaxis]
                 x22 = x_mat[:, i - 1][:, np.newaxis]
+                dmg_r22 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x22 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i22 = 1
 
             elif test_digits[trial][1] == (1, 2) and i12 == 0:
 
                 r12 = r_mat[:, i - 1][:, np.newaxis]
                 x12 = x_mat[:, i - 1][:, np.newaxis]
+                dmg_r12 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x12 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i12 = 1
 
             elif test_digits[trial][1] == (2, 1) and i21 == 0:
 
                 r21 = r_mat[:, i - 1][:, np.newaxis]
                 x21 = x_mat[:, i - 1][:, np.newaxis]
+                dmg_r21 = dmg_r_mat[:, i-1][:, np.newaxis]
+                dmg_x21 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i21 = 1
 
             print('Test Digits: ', test_digits[trial])
@@ -265,8 +287,10 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
 
     x_ICs = np.array([x00, x01, x10, x11])
     r_ICs = np.array([r00, r01, r10, r11])
+    dmg_x_ICs = np.array([dmg_x00, dmg_x01, dmg_x10, dmg_x11])
+    dmg_r_ICs = np.array([dmg_r00, dmg_r01, dmg_r10, dmg_r11])
 
-    return x_ICs, r_ICs, x_mat, dmg_x
+    return x_ICs, r_ICs, x_mat, dmg_x_ICs, dmg_r_ICs, dmg_x
 
 def test_single(params, x, exp_mat, input_digits):
     net_prs = params['network']
@@ -274,6 +298,7 @@ def test_single(params, x, exp_mat, input_digits):
     task_prs = params['task']
     msc_prs = params['msc']
     model_prs = params['model']
+    params['network']['N'] = params['model']['N']
     wo, wd = model_prs['wo'], model_prs['wd']
     wf, wfd, wi = model_prs['wf'], model_prs['wfd'], model_prs['wi']
     J = model_prs['J']
@@ -281,13 +306,21 @@ def test_single(params, x, exp_mat, input_digits):
     test_steps = int(train_prs['n_test'] * task_prs['t_trial'] / net_prs['dt'])
     time_steps = np.arange(0, test_steps, 1)
 
+    i00, i01, i10, i11 = 0, 0, 0, 0
+
     r = np.tanh(x)
     z = np.matmul(wo.T, r)
     zd = np.matmul(wd.T, r)
 
+    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=False)
     trial = 0
 
     for i in range(test_steps):
+        x_mat[:, i] = x.reshape(-1)
+        r_mat[:, i] = r.reshape(-1)
+        z_mat[i] = z
+        zd_mat[:, i] = zd.reshape(-1)
+        
         dx = -x + g * np.matmul(J, r) + np.matmul(wf, z) + np.matmul(wi, exp_mat[:,i].reshape([net_prs['d_input'],])) + np.matmul(wfd, zd)
         x = x + (dx * dt) / tau
         r = np.tanh(x)
@@ -295,8 +328,64 @@ def test_single(params, x, exp_mat, input_digits):
         zd = np.matmul(wd.T, r)
 
         if (i+1) % int((task_prs['t_trial']) / dt) == 0:
+            if input_digits[trial][1] == (0,0) and i00 == 0:
+
+                r00 = r_mat[:, i-1][:, np.newaxis]
+                x00 = x_mat[:, i-1][:, np.newaxis]
+                i00 = 1
+
+            elif input_digits[trial][1] == (0,1) and i01 == 0:
+
+                r01 = r_mat[:, i-1][:, np.newaxis]
+                x01 = x_mat[:, i-1][:, np.newaxis]
+                i01 = 1
+
+            elif input_digits[trial][1] == (1,0) and i10 == 0:
+
+                r10 = r_mat[:, i-1][:, np.newaxis]
+                x10 = x_mat[:, i-1][:, np.newaxis]
+                i10 = 1
+
+            elif input_digits[trial][1] == (1,1) and i11 == 0:
+
+                r11 = r_mat[:, i-1][:, np.newaxis]
+                x11 = x_mat[:, i-1][:, np.newaxis]
+                i11 = 1
+
+            elif input_digits[trial][1] == (0, 2) and i02 == 0:
+
+                r02 = r_mat[:, i - 1][:, np.newaxis]
+                x02 = x_mat[:, i - 1][:, np.newaxis]
+                i02 = 1
+
+            elif input_digits[trial][1] == (2, 0) and i20 == 0:
+
+                r20 = r_mat[:, i - 1][:, np.newaxis]
+                x20 = x_mat[:, i - 1][:, np.newaxis]
+                i20 = 1
+
+            elif input_digits[trial][1] == (2, 2) and i22 == 0:
+
+                r22 = r_mat[:, i - 1][:, np.newaxis]
+                x22 = x_mat[:, i - 1][:, np.newaxis]
+                i22 = 1
+
+            elif input_digits[trial][1] == (1, 2) and i12 == 0:
+
+                r12 = r_mat[:, i - 1][:, np.newaxis]
+                x12 = x_mat[:, i - 1][:, np.newaxis]
+                i12 = 1
+
+            elif input_digits[trial][1] == (2, 1) and i21 == 0:
+
+                r21 = r_mat[:, i - 1][:, np.newaxis]
+                x21 = x_mat[:, i - 1][:, np.newaxis]
+                i21 = 1
             print('Test Digits: ', input_digits[trial])
             print('z: ', np.around(2*z) / 2.0)
             trial += 1
-
-    return x
+            
+    x_ICs = np.array([x00, x01, x10, x11])
+    r_ICs = np.array([r00, r01, r10, r11])
+    
+    return x_ICs, r_ICs, x
