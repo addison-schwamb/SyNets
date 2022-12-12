@@ -118,9 +118,9 @@ dmg_params, dmg_x, _, _, _ = load_data(name=msc_prs['damaged_net'],prefix='damag
 # test damaged network with no input
 filename = 'fp_test' + '_' + msc_prs['damaged_net']
 with open(dir + filename, 'rb') as f:
-    ph_params, _, _, attractor, _, _ = pickle.load(f)
+    ph_params, _, _, _, attractor, _, _ = pickle.load(f)
 print('Pre-Damage Attractor: ',attractor)
-dmg_x_ICs, dmg_r_ICs, dmg_x = test_single(dmg_params, dmg_x, exp_mat, input_digits)
+dmg_x_ICs, dmg_r_ICs, dmg_x, dmg_x_mat = test_single(dmg_params, dmg_x, exp_mat, input_digits)
 dmg_ph_params = set_posthoc_params(dmg_x_ICs, dmg_r_ICs)
 trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(dmg_params, dmg_ph_params, digits_rep, labels)
 print('Post-Damage Attractor: ',attractor)
@@ -130,9 +130,11 @@ save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, 
 dmg_params = add_input_weights(dmg_params)
 
 # train new network
-x_train, dmg_x, params = train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits)
+x_train, dmg_x, dmg_x_mat_trained, params = train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits)
+print(np.all(dmg_x_mat[:,-1] == dmg_x_mat_trained[:,-1]))
 x_ICs, r_ICs, internal_x, dmg_x_ICs, dmg_r_ICs, dmg_x = test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
 ph_params = set_posthoc_params(x_ICs, r_ICs, dmg_x_ICs=dmg_x_ICs, dmg_r_ICs=dmg_r_ICs)
 
 trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(params, ph_params, digits_rep, labels, synet=True, dmg_params=dmg_params)
-save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, attractor, name=params['msc']['damaged_net'], prefix='damaged_fp_test', dir=dir)
+print('SyNet Attractor: ', attractor)
+save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, attractor, name=params['msc']['damaged_net'], prefix='synet_fp_test', dir=dir)

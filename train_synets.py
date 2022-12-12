@@ -75,16 +75,22 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     zd = np.matmul(dmg_wd.T, dmg_r)
 
     x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=True)
+    dmg_x_mat = np.zeros([np.shape(dmg_x)[0], train_steps])
     trial = 0
     i = 0
+    changes = 0
     last_stop = 0
     for i in range(train_steps):
         x_mat[:, i] = x.reshape(-1)
+        dmg_x_mat[:, i] = dmg_x.reshape(-1)
         r_mat[:, i] = r.reshape(-1)
         eps_mat[:, i] = eps.reshape(-1)
         u_mat[i] = u
         z_mat[i] = z
         zd_mat[:, i] = zd.reshape(-1)
+
+        if np.any(dmg_x_mat[:,i] != dmg_x_mat[:,i-1]):
+            changes += 1
 
         input = np.concatenate((zd,exp_mat[:,i]), axis=None)
         x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) + eps
@@ -138,6 +144,8 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
 
     toc = time.time()
     print('\n', 'train time = ', (toc-tic)/60)
+    print('total changes to dmg_x: ', changes)
+    print('training steps: ', train_steps)
 
     model_params = {'W': W, 'wo': wo, 'wi': wi, 'Sigma': Sigma}
     params['model'] = model_params
@@ -148,7 +156,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     #plt.plot(deltaW_mat)
     #plt.show()
 
-    return x, dmg_x, params
+    return x, dmg_x, dmg_x_mat, params
 
 def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
     model_prs, dmg_model_prs = params['model'], dmg_params['model']
@@ -320,7 +328,7 @@ def test_single(params, x, exp_mat, input_digits):
         r_mat[:, i] = r.reshape(-1)
         z_mat[i] = z
         zd_mat[:, i] = zd.reshape(-1)
-        
+
         dx = -x + g * np.matmul(J, r) + np.matmul(wf, z) + np.matmul(wi, exp_mat[:,i].reshape([net_prs['d_input'],])) + np.matmul(wfd, zd)
         x = x + (dx * dt) / tau
         r = np.tanh(x)
@@ -384,8 +392,8 @@ def test_single(params, x, exp_mat, input_digits):
             print('Test Digits: ', input_digits[trial])
             print('z: ', np.around(2*z) / 2.0)
             trial += 1
-            
+
     x_ICs = np.array([x00, x01, x10, x11])
     r_ICs = np.array([r00, r01, r10, r11])
-    
-    return x_ICs, r_ICs, x
+
+    return x_ICs, r_ICs, x, x_mat
