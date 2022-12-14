@@ -131,10 +131,15 @@ dmg_params = add_input_weights(dmg_params)
 
 # train new network
 x_train, dmg_x, dmg_x_mat_trained, params = train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits)
-print(np.all(dmg_x_mat[:,-1] == dmg_x_mat_trained[:,-1]))
 x_ICs, r_ICs, internal_x, dmg_x_ICs, dmg_r_ICs, dmg_x = test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
 ph_params = set_posthoc_params(x_ICs, r_ICs, dmg_x_ICs=dmg_x_ICs, dmg_r_ICs=dmg_r_ICs)
 
 trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(params, ph_params, digits_rep, labels, synet=True, dmg_params=dmg_params)
 print('SyNet Attractor: ', attractor)
 save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, attractor, name=params['msc']['damaged_net'], prefix='synet_fp_test', dir=dir)
+
+
+isHurwitz, kalmanRank, kalmanCond = controllability_analysis(dmg_params)
+print('Hurwitz: ', isHurwitz)
+print('Kalman Matrix Rank: ', kalmanRank)
+print('Kalman Matrix Condition Number: ', kalmanCond)

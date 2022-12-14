@@ -693,8 +693,28 @@ def saturation_percentage(params, ph_params, digits_rep, labels):
 
     return sat_ratio_delay, sat_ratio_resp
 
+def controllability_analysis(params):
+    model_prs = params['model']
+    g, J, wi, wo = model_prs['g'], model_prs['J'], model_prs['wi'], model_prs['wo']
+    wd, wf, wfd = model_prs['wd'], model_prs['wf'], model_prs['wfd']
+    N = model_prs['N']
+    
+    A = (-np.eye(N) + dmg_g * dmg_J + np.matmul(dmg_wf, dmg_wo.T) + np.matmul(dmg_wfd, dmg_wd.T)
+    B = wi
+    
+    eig_vals, _ = np.linalg.eig(A)
+    isHurwitz = np.all(np.real(eig_vals) > 0)
+    
+    K = B
+    L = B
+    for i in range(1,N):
+        L = np.matmul(A, L)
+        K = np.concatenate((K, L),axis=1)
+    
+    kalmanRank = np.linalg.matrix_rank(K)
+    kalmanCond = np.linalg.cond(K)
 
-
+    return isHurwitz, kalmanRank, kalmanCond
 
 
 

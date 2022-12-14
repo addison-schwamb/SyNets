@@ -89,9 +89,6 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
         z_mat[i] = z
         zd_mat[:, i] = zd.reshape(-1)
 
-        if np.any(dmg_x_mat[:,i] != dmg_x_mat[:,i-1]):
-            changes += 1
-
         input = np.concatenate((zd,exp_mat[:,i]), axis=None)
         x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) + eps
         r = np.tanh(x)
@@ -144,7 +141,6 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
 
     toc = time.time()
     print('\n', 'train time = ', (toc-tic)/60)
-    print('total changes to dmg_x: ', changes)
     print('training steps: ', train_steps)
 
     model_params = {'W': W, 'wo': wo, 'wi': wi, 'Sigma': Sigma}
