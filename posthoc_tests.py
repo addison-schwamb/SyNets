@@ -699,7 +699,7 @@ def controllability_analysis(params):
     wd, wf, wfd = model_prs['wd'], model_prs['wf'], model_prs['wfd']
     N = model_prs['N']
     
-    A = (-np.eye(N) + dmg_g * dmg_J + np.matmul(dmg_wf, dmg_wo.T) + np.matmul(dmg_wfd, dmg_wd.T)
+    A = -np.eye(N) + dmg_g * dmg_J + np.matmul(dmg_wf, dmg_wo.T) + np.matmul(dmg_wfd, dmg_wd.T)
     B = wi
     
     eig_vals, _ = np.linalg.eig(A)
