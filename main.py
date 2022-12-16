@@ -139,7 +139,9 @@ print('SyNet Attractor: ', attractor)
 save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, attractor, name=params['msc']['damaged_net'], prefix='synet_fp_test', dir=dir)
 
 
-isHurwitz, kalmanRank, kalmanCond = controllability_analysis(dmg_params)
+isHurwitz, kalmanRank, kalmanCond, synet_kalmanRank, synet_kalmanCond, input_inf = controllability_analysis(dmg_params)
 print('Hurwitz: ', isHurwitz)
 print('Kalman Matrix Rank: ', kalmanRank)
 print('Kalman Matrix Condition Number: ', kalmanCond)
+print('Kalman Matrix Rank (SyNet Input Only): ', synet_kalmanRank)
+print('Influence of SyNet Input: ', input_inf)

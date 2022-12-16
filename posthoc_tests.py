@@ -699,22 +699,32 @@ def controllability_analysis(params):
     wd, wf, wfd = model_prs['wd'], model_prs['wf'], model_prs['wfd']
     N = model_prs['N']
     
-    A = -np.eye(N) + dmg_g * dmg_J + np.matmul(dmg_wf, dmg_wo.T) + np.matmul(dmg_wfd, dmg_wd.T)
-    B = wi
+    A = -np.eye(N) + g * J + np.matmul(wf, wo.T) + np.matmul(wfd, wd.T)
+    B = wi[:,0].reshape([N,1])
     
     eig_vals, _ = np.linalg.eig(A)
     isHurwitz = np.all(np.real(eig_vals) > 0)
     
-    K = B
-    L = B
+    K = wi
+    L = wi
+    synet_K = B
+    synet_L = B
     for i in range(1,N):
         L = np.matmul(A, L)
         K = np.concatenate((K, L),axis=1)
+        synet_L = np.matmul(A, synet_L)
+        synet_K = np.concatenate((synet_K, synet_L),axis=1)
     
     kalmanRank = np.linalg.matrix_rank(K)
     kalmanCond = np.linalg.cond(K)
-
-    return isHurwitz, kalmanRank, kalmanCond
+    synet_kalmanRank = np.linalg.matrix_rank(synet_K)
+    synet_kalmanCond = np.linalg.cond(synet_K)
+    
+    influence = np.linalg.norm(A, ord=1, axis=0)
+    influence = influence.reshape([N,1])
+    input_inf = np.matmul(np.abs(B).T, influence)
+    
+    return isHurwitz, kalmanRank, kalmanCond, synet_kalmanRank, synet_kalmanCond, input_inf
 
 
 

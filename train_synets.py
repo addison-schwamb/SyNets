@@ -141,7 +141,6 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
 
     toc = time.time()
     print('\n', 'train time = ', (toc-tic)/60)
-    print('training steps: ', train_steps)
 
     model_params = {'W': W, 'wo': wo, 'wi': wi, 'Sigma': Sigma}
     params['model'] = model_params
