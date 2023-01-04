@@ -53,6 +53,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     train_prs = params['train']
     task_prs = params['task']
     msc_prs = params['msc']
+    feedback = msc_prs['feedback']
     rng = np.random.RandomState(msc_prs['seed'])
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
     alpha, sigma2, max_grad = net_prs['alpha'], net_prs['sigma2'], net_prs['max_grad']
@@ -89,7 +90,10 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
         z_mat[i] = z
         zd_mat[:, i] = zd.reshape(-1)
 
-        input = np.concatenate((zd,exp_mat[:,i]), axis=None)
+        if feedback:
+            input = np.concatenate((zd,exp_mat[:,i]), axis=None)
+        else:
+            input = exp_mat[:,i]
         x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) + eps
         r = np.tanh(x)
         u = np.matmul(wo.T, r)
@@ -116,7 +120,10 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
                 input_cum = 0
                 for k in range(1, j+1):
                     r_cum += ((1 - dt) ** (k - 1)) * dt * r_mat[:, idx-k]
-                    input_cum += ((1 - dt) ** (k - 1)) * dt * np.concatenate((zd_mat[:, idx-k], exp_mat[:, idx-k]), axis=None)
+                    if feedback:
+                        input_cum += ((1 - dt) ** (k - 1)) * dt * np.concatenate((zd_mat[:, idx-k], exp_mat[:, idx-k]), axis=None)
+                    else:
+                        input_cum += ((1 - dt) ** (k - 1)) * dt * exp_mat[:, idx-k]
                 eps_r += np.outer(eps_mat[:, idx], r_cum)
                 eps_in += np.outer(eps_mat[:, idx], input_cum)
 
@@ -159,6 +166,7 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
     train_prs = params['train']
     task_prs = params['task']
     msc_prs = params['msc']
+    feedback = msc_prs['feedback']
     rng = np.random.RandomState(msc_prs['seed'])
     W, wo, wi = model_prs['W'], model_prs['wo'], model_prs['wi']
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
@@ -197,7 +205,10 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
         z_mat[i] = z
         zd_mat[:, i] = zd.reshape(-1)
 
-        input = np.concatenate((zd,exp_mat[:,i]), axis=None)
+        if feedback:
+            input = np.concatenate((zd,exp_mat[:,i]), axis=None)
+        else:
+            input = exp_mat[:,i]
         x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) #+ eps
         r = np.tanh(x)
         u = np.matmul(wo.T, r)

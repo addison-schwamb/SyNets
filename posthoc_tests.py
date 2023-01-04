@@ -333,6 +333,7 @@ def synet_fw_from_multi_ICs(params, dmg_params, ph_params, digits_rep, labels, t
     task_prs = params['task']
     msc_prs = params['msc']
     model_prs, dmg_model_prs = params['model'], dmg_params['model']
+    feedback = msc_prs['feedback']
     W, wo, wi = model_prs['W'], model_prs['wo'], model_prs['wi']
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
     alpha = net_prs['alpha']
@@ -433,7 +434,10 @@ def synet_fw_from_multi_ICs(params, dmg_params, ph_params, digits_rep, labels, t
             z_[:, i] = z
             zd_[:, i] = zd
 
-            input = np.concatenate((zd, np.zeros([2,])), axis=None)
+            if feedback:
+                input = np.concatenate((zd, np.zeros([2,])), axis=None)
+            else:
+                input = np.zeros([2,])
             x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],])))
             r = np.tanh(x)
             u = np.matmul(wo.T, r)

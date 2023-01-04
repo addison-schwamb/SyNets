@@ -13,7 +13,7 @@ parser.add_argument('-d', type=json.loads)
 args = parser.parse_args()
 kwargs= args.d
 
-def set_all_parameters(alpha, sigma2, max_grad, n_train, encoding, seed, damaged_net):
+def set_all_parameters(alpha, sigma2, max_grad, n_train, encoding, seed, damaged_net, feedback=True):
     params = dict()
 
     net_params = dict()
@@ -22,7 +22,11 @@ def set_all_parameters(alpha, sigma2, max_grad, n_train, encoding, seed, damaged
     net_params['alpha'] = alpha
     net_params['sigma2'] = sigma2
     net_params['max_grad'] = max_grad
-    net_params['d_input'] = 4
+    if feedback:
+        net_params['d_input'] = 4
+        print('feedback is true')
+    else:
+        net_params['d_input'] = 2
     net_params['d_output'] = 1
     params['network'] = net_params
 
@@ -49,6 +53,7 @@ def set_all_parameters(alpha, sigma2, max_grad, n_train, encoding, seed, damaged
     other_params = dict()
     other_params['seed'] = seed  #default is 0
     other_params['damaged_net'] = damaged_net
+    other_params['feedback'] = feedback
     params['msc'] = other_params
 
     return params
