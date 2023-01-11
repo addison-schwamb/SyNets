@@ -79,7 +79,6 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     dmg_x_mat = np.zeros([np.shape(dmg_x)[0], train_steps])
     trial = 0
     i = 0
-    changes = 0
     last_stop = 0
     for i in range(train_steps):
         x_mat[:, i] = x.reshape(-1)
@@ -153,10 +152,10 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     params['model'] = model_params
     task_prs['counter'] = i
 
-    #plt.plot(rwd_mat)
+    plt.plot(rwd_mat)
     #plt.figure()
     #plt.plot(deltaW_mat)
-    #plt.show()
+    plt.show()
 
     return x, dmg_x, dmg_x_mat, params
 
