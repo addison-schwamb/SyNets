@@ -70,6 +70,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     eps = np.matmul(Sigma,rng.randn(N,1))
 
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
+    dmg_wi = dmg_wi[:,0:3]
     dmg_wd, dmg_wf, dmg_wfd = dmg_model_prs['wd'], dmg_model_prs['wf'], dmg_model_prs['wfd']
     dmg_r = np.tanh(dmg_x)
     z = np.matmul(dmg_wo.T, dmg_r)
@@ -152,6 +153,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     params['model'] = model_params
     task_prs['counter'] = i
 
+    plt.figure()
     plt.plot(rwd_mat)
     #plt.figure()
     #plt.plot(deltaW_mat)
@@ -172,6 +174,7 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
     alpha = net_prs['alpha']
     #Sigma, N = model_prs['Sigma'], net_prs['N']
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
+    dmg_wi = dmg_wi[:,0:3]
     dmg_wd, dmg_wf, dmg_wfd = dmg_model_prs['wd'], dmg_model_prs['wf'], dmg_model_prs['wfd']
     test_steps = int(train_prs['n_test'] * task_prs['t_trial'] / net_prs['dt'])
     time_steps = np.arange(0, test_steps, 1)
@@ -314,6 +317,7 @@ def test_single(params, x, exp_mat, input_digits):
     params['network']['N'] = params['model']['N']
     wo, wd = model_prs['wo'], model_prs['wd']
     wf, wfd, wi = model_prs['wf'], model_prs['wfd'], model_prs['wi']
+    wi = wi[:,0:2]
     J = model_prs['J']
     dt, tau, g = net_prs['dt'], net_prs['tau'], net_prs['g']
     test_steps = int(train_prs['n_test'] * task_prs['t_trial'] / net_prs['dt'])

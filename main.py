@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 import pickle
+from sklearn.decomposition import PCA
 from SPM_task import *
 from train_synets import *
 from posthoc_tests import *
@@ -124,6 +125,20 @@ filename = 'fp_test' + '_' + msc_prs['damaged_net']
 with open(dir + filename, 'rb') as f:
     ph_params, _, _, _, attractor, _, _ = pickle.load(f)
 print('Pre-Damage Attractor: ',attractor)
+old_params, old_x, _, _, _ = load_data(name=msc_prs['damaged_net'],prefix='train',dir=dir)
+old_x = old_x[:,-1]
+old_params['model']['N'] = 1000
+old_x_ICs, old_r_ICs, _, old_x_mat = test_single(old_params, old_x, exp_mat, input_digits)
+old_x_mat = old_x_mat[:,int(-task_prs['t_trial'] / net_prs['dt']):]
+pca = PCA(n_components=3)
+pca.fit(old_x_mat.T)
+pc_traj = pca.transform(old_x_mat.T)
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot3D(pc_traj[:,0],pc_traj[:,1],pc_traj[:,2])
+#plt.show()
+
+dmg_params['network']['d_input'] = 2
 dmg_x_ICs, dmg_r_ICs, dmg_x, dmg_x_mat = test_single(dmg_params, dmg_x, exp_mat, input_digits)
 dmg_ph_params = set_posthoc_params(dmg_x_ICs, dmg_r_ICs)
 #trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(dmg_params, dmg_ph_params, digits_rep, labels)
@@ -140,10 +155,16 @@ save_data_variable_size(params, internal_x, name=params['msc']['damaged_net'], p
 save_data_variable_size(dmg_params, dmg_x, dmg_x_ICs, dmg_r_ICs, error_ratio, name=msc_prs['damaged_net'], prefix='damaged', dir=dir)
 ph_params = set_posthoc_params(x_ICs, r_ICs, dmg_x_ICs=dmg_x_ICs, dmg_r_ICs=dmg_r_ICs)
 
-#trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(params, ph_params, digits_rep, labels, synet=True, dmg_params=dmg_params)
-#print('SyNet Attractor: ', attractor)
-#save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, attractor, name=params['msc']['damaged_net'], prefix='synet_fp_test', dir=dir)
+trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(params, ph_params, digits_rep, labels, synet=True, dmg_params=dmg_params)
+print('SyNet Attractor: ', attractor)
+save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, attractor, name=params['msc']['damaged_net'], prefix='synet_fp_test', dir=dir)
 
+dmg_x_mat = dmg_x_mat[:,int(-task_prs['t_trial'] / net_prs['dt']):]
+pc_traj = pca.transform(dmg_x_mat.T)
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot3D(pc_traj[:,0],pc_traj[:,1],pc_traj[:,2])
+plt.show()
 
 #isHurwitz, kalmanRank, kalmanCond, synet_kalmanRank, synet_kalmanCond, input_inf = controllability_analysis(dmg_params)
 #print('Hurwitz: ', isHurwitz)

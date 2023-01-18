@@ -338,6 +338,7 @@ def synet_fw_from_multi_ICs(params, dmg_params, ph_params, digits_rep, labels, t
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
     alpha = net_prs['alpha']
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
+    dmg_wi = dmg_wi[:,0:3]
     dmg_wd, dmg_wf, dmg_wfd, = dmg_model_prs['wd'], dmg_model_prs['wf'], dmg_model_prs['wfd']
     fw_steps = int((ph_params['n_fw'] * task_prs['t_trial']) / net_prs['dt'])
     time_steps = np.arange(0, fw_steps, 1)
