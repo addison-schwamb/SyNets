@@ -13,7 +13,7 @@ from SPM_task import *
 def set_posthoc_params(x_ICs, r_ICs, dmg_x_ICs=None, dmg_r_ICs=None):
     ph_params = dict()
     ph_params['x_noise_var'] = 0.5 #determine type of attractor
-    ph_params['n_fw'] = 50 # forward simulate the network (autonomously) for 50xTrial_length 
+    ph_params['n_fw'] = 50 # forward simulate the network (autonomously) for 50xTrial_length
     ph_params['n_ICs'] = 100 # NO. of initial conditions for finding fps
     ph_params['seed'] = 1
     if dmg_x_ICs is not None:
@@ -338,7 +338,7 @@ def synet_fw_from_multi_ICs(params, dmg_params, ph_params, digits_rep, labels, t
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
     alpha = net_prs['alpha']
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
-    dmg_wi = dmg_wi[:,0:3]
+    dmg_wi = dmg_wi[:,-3:]
     dmg_wd, dmg_wf, dmg_wfd, = dmg_model_prs['wd'], dmg_model_prs['wf'], dmg_model_prs['wfd']
     fw_steps = int((ph_params['n_fw'] * task_prs['t_trial']) / net_prs['dt'])
     time_steps = np.arange(0, fw_steps, 1)
@@ -462,7 +462,7 @@ def synet_fw_from_multi_ICs(params, dmg_params, ph_params, digits_rep, labels, t
 def attractor_type(params, ph_params, digits_rep, labels, synet=False, dmg_params=None):
     # evaluate type of attractors using 1. mean and variance of z and z_d 2. evaluation of unique fixed points given
     #  multiple noisy ics
-    
+
     output_encoding = params['task']['output_encoding']
     t_trial = params['task']['t_trial']
     dt = params['network']['dt']
@@ -703,13 +703,13 @@ def controllability_analysis(params):
     g, J, wi, wo = model_prs['g'], model_prs['J'], model_prs['wi'], model_prs['wo']
     wd, wf, wfd = model_prs['wd'], model_prs['wf'], model_prs['wfd']
     N = model_prs['N']
-    
+
     A = -np.eye(N) + g * J + np.matmul(wf, wo.T) + np.matmul(wfd, wd.T)
     B = wi[:,0].reshape([N,1])
-    
+
     eig_vals, _ = np.linalg.eig(A)
     isHurwitz = np.all(np.real(eig_vals) > 0)
-    
+
     K = wi
     L = wi
     synet_K = B
@@ -719,51 +719,14 @@ def controllability_analysis(params):
         K = np.concatenate((K, L),axis=1)
         synet_L = np.matmul(A, synet_L)
         synet_K = np.concatenate((synet_K, synet_L),axis=1)
-    
+
     kalmanRank = np.linalg.matrix_rank(K)
     kalmanCond = np.linalg.cond(K)
     synet_kalmanRank = np.linalg.matrix_rank(synet_K)
     synet_kalmanCond = np.linalg.cond(synet_K)
-    
+
     influence = np.linalg.norm(A, ord=1, axis=0)
     influence = influence.reshape([N,1])
     input_inf = np.matmul(np.abs(B).T, influence)
-    
+
     return isHurwitz, kalmanRank, kalmanCond, synet_kalmanRank, synet_kalmanCond, input_inf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
