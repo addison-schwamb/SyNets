@@ -13,3 +13,4 @@ COPY train_synets.py .
 COPY remove_neurons.py .
 COPY posthoc_tests.py .
 COPY reuse_synet.py .
+COPY posthoc.py .

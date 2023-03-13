@@ -15,7 +15,7 @@ kwargs= args.d
 
 def set_all_parameters(n_train, encoding, seed, damaged_net, synet):
     params = dict()
-    
+
     task_params = dict()
     t_intervals = dict()
     t_intervals['fixate_on'], t_intervals['fixate_off'] = 0, 0
@@ -29,21 +29,22 @@ def set_all_parameters(n_train, encoding, seed, damaged_net, synet):
     task_params['keep_perms'] = [(0, 0), (0, 1), (1, 0), (1, 1)]
     task_params['n_digits'] = 9
     params['task'] = task_params
-    
+
     train_params = dict()
-    train_params['n_train'] = int(n_train)  # training steps
+    #train_params['n_train'] = int(n_train)  # training steps
     train_params['n_train_ext'] = int(0)
     train_params['n_test'] = int(20)      # test steps
     params['train'] = train_params
-    
+
     other_params = dict()
     other_params['seed'] = seed  #default is 0
     other_params['damaged_net'] = damaged_net
     other_params['synet'] = synet
+    other_params['n_train'] = n_train
     params['msc'] = other_params
-    
+
     return params
-    
+
 def get_digits_reps():
 
     with open('allDigCNNMNIST', 'rb') as f:
@@ -54,16 +55,38 @@ def get_digits_reps():
     y_test, x_test = np.array(y_test), x_test.reshape([x_test.shape[0], 28, 28])
 
     return y_test, z_sample
-    
+
 def load_data(name,prefix,dir):
     filename = prefix + '_' + name
     with open(dir + filename, 'rb') as f:
         if prefix == 'damaged':
-            params, internal_x, _, _, _ = pickle.load(f)
+            params, internal_x, _, _, _, _, _ = pickle.load(f)
         elif prefix == 'synet_trained':
-            params, internal_x = pickle.load(f)
+            params, internal_x, _, _ = pickle.load(f)
 
     return params, internal_x
+
+def add_input_weights(params):
+    rng = np.random.RandomState(msc_prs['seed'])
+    net_prs = params['network']
+    train_prs = params['train']
+    model_prs = params['model']
+    wi = model_prs['wi']
+    N = model_prs['N']
+
+    if train_prs['init_dist'] == 'Gauss':
+        new_weights = (1. * rng.randn(N, 1)) / net_prs['input_var']
+    elif train_prs['init_dist'] == 'Uniform':
+        new_weights = (2 * rng.rand(N, 1) - 1) / net_prs['input_var']
+
+    new_wi = np.concatenate((new_weights,wi),axis=1)
+    model_prs['wi'] = new_wi
+    net_prs['d_input'] += 1
+    net_prs['N'] = model_prs['N']
+    params['model'] = model_prs
+    params['network'] = net_prs
+
+    return params
 
 def zero_fat_mats_reuse(params, net_prs, is_train=True):
     train_prs = params['train']
@@ -85,7 +108,7 @@ def zero_fat_mats_reuse(params, net_prs, is_train=True):
     deltaW_mat = np.zeros(total_size)
 
     return x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat
-    
+
 def train_reuse(params, synet_params, dmg_params, synet_x, dmg_x, exp_mat, target_mat, input_digits):
     tic = time.time()
 
@@ -111,6 +134,7 @@ def train_reuse(params, synet_params, dmg_params, synet_x, dmg_x, exp_mat, targe
 
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
     dmg_wd, dmg_wf, dmg_wfd = dmg_model_prs['wd'], dmg_model_prs['wf'], dmg_model_prs['wfd']
+    dmg_wi = dmg_wi[:,-3:]
     dmg_r = np.tanh(dmg_x)
     z = np.matmul(dmg_wo.T, dmg_r)
     zd = np.matmul(dmg_wd.T, dmg_r)
@@ -186,10 +210,10 @@ def train_reuse(params, synet_params, dmg_params, synet_x, dmg_x, exp_mat, targe
     synet_params['model'] = model_params
     task_prs['counter'] = i
 
-    plt.plot(rwd_mat)
+    #plt.plot(rwd_mat)
     #plt.figure()
     #plt.plot(deltaW_mat)
-    plt.show()
+    #plt.show()
 
     return x, dmg_x, dmg_x_mat, synet_params
 
@@ -206,6 +230,7 @@ def test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_
     #Sigma, N = model_prs['Sigma'], net_prs['N']
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
     dmg_wd, dmg_wf, dmg_wfd = dmg_model_prs['wd'], dmg_model_prs['wf'], dmg_model_prs['wfd']
+    dmg_wi = dmg_wi[:,-3:]
     test_steps = int(train_prs['n_test'] * task_prs['t_trial'] / net_prs['dt'])
     time_steps = np.arange(0, test_steps, 1)
     trial_steps = int((task_prs['t_trial']) / dt)
@@ -341,18 +366,21 @@ train_prs = params['train']
 msc_prs = params['msc']
 labels, digits_rep = get_digits_reps()
 dmg_params, dmg_x = load_data(name=msc_prs['damaged_net'],prefix='damaged',dir=dir)
+dmg_params = add_input_weights(dmg_params)
 synet_params, synet_x = load_data(name=msc_prs['synet'], prefix='synet_trained', dir=dir)
 
-task = sum_task_experiment(task_prs['n_digits'], train_prs['n_train'], train_prs['n_train_ext'], train_prs['n_test'], task_prs['time_intervals'],
-                           synet_params['network']['dt'], task_prs['output_encoding'], task_prs['keep_perms'] , digits_rep, labels, msc_prs['seed'])
-exp_mat, target_mat, dummy_mat, input_digits, output_digits = task.experiment()
+for n in msc_prs['n_train']:
+    params['train']['n_train'] = n
+    task = sum_task_experiment(task_prs['n_digits'], train_prs['n_train'], train_prs['n_train_ext'], train_prs['n_test'], task_prs['time_intervals'],
+                               synet_params['network']['dt'], task_prs['output_encoding'], task_prs['keep_perms'] , digits_rep, labels, msc_prs['seed'])
+    exp_mat, target_mat, dummy_mat, input_digits, output_digits = task.experiment()
 
-print('Training with Pre-trained SyNet')
-x_train, dmg_x, dmg_x_mat_trained, synet_params = train_reuse(params, synet_params, dmg_params, synet_x[:,-1], dmg_x, exp_mat, target_mat, input_digits)
-x_ICs, r_ICs, internal_x, dmg_x_ICs, dmg_r_ICs, dmg_x = test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
-params['network'] = synet_params['network']
-params['model'] = synet_params['model']
-params['msc']['feedback'] = True
+    print('Training with Pre-trained SyNet, n = ',n)
+    x_train, dmg_x, dmg_x_mat_trained, synet_params = train_reuse(params, synet_params, dmg_params, synet_x[:,-1], dmg_x, exp_mat, target_mat, input_digits)
+    x_ICs, r_ICs, internal_x, dmg_x_ICs, dmg_r_ICs, dmg_x = test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
+    params['network'] = synet_params['network']
+    params['model'] = synet_params['model']
+    params['msc']['feedback'] = True
 #ph_params = set_posthoc_params(x_ICs, r_ICs, dmg_x_ICs=dmg_x_ICs, dmg_r_ICs=dmg_r_ICs)
 #trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(params, ph_params, digits_rep, labels, synet=True, dmg_params=dmg_params)
 #print('SyNet Attractor: ', attractor)

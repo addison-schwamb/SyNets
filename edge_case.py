@@ -5,6 +5,7 @@ import pickle
 from SPM_task import *
 from train_synets import *
 from posthoc_tests import *
+from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 dir = ''
 
@@ -70,9 +71,9 @@ def get_digits_reps():
 def load_data(name,prefix,dir):
     filename = prefix + '_' + name
     with open(dir + filename, 'rb') as f:
-        params, internal_x, x_ICs, r_ICs, error_ratio = pickle.load(f)
+        params, internal_x, x_mat, err_mat, x_ICs, r_ICs, error_ratio = pickle.load(f)
 
-    return params, internal_x, x_ICs, r_ICs, error_ratio
+    return params, internal_x, x_mat, err_mat, x_ICs, r_ICs, error_ratio
 
 def save_data_variable_size(*vars1, name=None, prefix='train', dir=None):
     file_name = prefix + '_' + name
@@ -81,6 +82,9 @@ def save_data_variable_size(*vars1, name=None, prefix='train', dir=None):
 
 def externalize_neurons(x, params):
     model_prs = params['model']
+    net_prs = params['network']
+    msc_prs = params['msc']
+    rng = np.random.RandomState(msc_prs['seed'])
     J = model_prs['J']
     wi = model_prs['wi']
     wo = model_prs['wo']
@@ -104,6 +108,9 @@ def externalize_neurons(x, params):
     ext_wf = wf[990:]
     dmg_wfd = wfd[0:990,:]
     ext_wfd = wfd[990:,:]
+
+    #new_wi = (1. * rng.randn(990, 10)) / net_prs['input_var']
+    #new_wd = (1. * rng.randn(10, 990)) / net_prs['fb_var']
 
     model_prs['J'] = dmg_J
     model_prs['wi'] = dmg_wi
@@ -230,7 +237,7 @@ def train_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, target_mat, input_
     train_steps = int((train_prs['n_train'] + train_prs['n_train_ext']) * task_prs['t_trial'] / dt)
     trial_steps = int((task_prs['t_trial']) / dt)
 
-    Sigma = np.diagflat(ext_net_prs['sigma2'] * np.ones([N, 1]))
+    Sigma = np.diagflat(sigma2 * np.ones([N, 1]))
     #ext_x = np.matmul(Sigma,rng.randn(N,1))
     W = 0.01 * rng.randn(N,N)
     ext_r = np.tanh(ext_x)
@@ -250,6 +257,7 @@ def train_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, target_mat, input_
     trial = 0
     i = 0
     last_stop = 0
+    n = 0
     for i in range(train_steps):
         x_mat[:, i] = ext_x.reshape(-1)
         dmg_x_mat[:, i] = dmg_x.reshape(-1)
@@ -259,7 +267,7 @@ def train_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, target_mat, input_
         z_mat[i] = dmg_z
         zd_mat[:, i] = dmg_zd.reshape(-1)
 
-        ext_dx = -ext_x + dmg_g*(np.matmul(W, ext_r)) + np.matmul(ext_wf, dmg_z) + np.matmul(ext_wfd, ext_zd+dmg_zd) + np.matmul(ext_wi, exp_mat[:,i]) + eps.reshape(-1)
+        ext_dx = -ext_x + dmg_g*(np.matmul(W, ext_r) + np.matmul(new_wd, dmg_r)) + np.matmul(ext_wf, dmg_z) + np.matmul(ext_wfd, ext_zd+dmg_zd) + np.matmul(ext_wi, exp_mat[:,i]) + eps.reshape(-1)
         dmg_dx = -dmg_x + dmg_g*(np.matmul(dmg_J, dmg_r) + np.matmul(new_wi, ext_r)) + np.matmul(dmg_wf, dmg_z) + np.matmul(dmg_wfd, ext_zd+dmg_zd) + np.matmul(dmg_wi, exp_mat[:,i])
         ext_x = ext_x + (ext_dx * dt) / tau
         dmg_x = dmg_x + (dmg_dx * dt) / tau
@@ -272,8 +280,8 @@ def train_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, target_mat, input_
 
         if np.any(target_mat[:, i] != 0.):
             eps_r = np.zeros([N, N])
-            R = 0.25 - abs(target_mat[:,i] - (ext_z + dmg_z))
-            rwd_mat[trial] = R
+            R = - abs(target_mat[:,i] - (ext_z + dmg_z))
+            rwd_mat[n] = R
             steps_since_update = i - last_stop
 
             for j in range(1, steps_since_update+1):
@@ -283,12 +291,14 @@ def train_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, target_mat, input_
                     r_cum += ((1 - dt) ** (k - 1)) * dt * r_mat[:, idx-k]
                 eps_r += np.outer(eps_mat[:, idx], r_cum)
 
-            deltaW = (alpha * dt / sigma2) * R * eps_r
+            #deltaW = (alpha * dt / sigma2) * R * eps_r
+            deltaW = (alpha * dt/ sigma2) * R * eps_r
             if np.linalg.norm(deltaW, ord='fro') > max_grad:
                 deltaW = (max_grad / np.linalg.norm(deltaW, ord='fro')) * deltaW
             #deltaW_mat[trial] = deltaW
-
             W += deltaW
+
+            n += 1
             last_stop = i
 
         if (i+1) % trial_steps == 0 and i != 0:
@@ -299,14 +309,15 @@ def train_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, target_mat, input_
     toc = time.time()
     print('\n', 'train time = ', (toc-tic)/60)
 
+    plt.figure()
+    plt.plot(rwd_mat)
+    plt.show()
+
     ext_model_prs['W'] = W
     ext_model_prs['Sigma'] = Sigma
     ext_params['model'] = ext_model_prs
     task_prs['counter'] = i
 
-    plt.figure()
-    plt.plot(rwd_mat)
-    plt.show()
     return ext_x, dmg_x, dmg_x_mat, ext_params
 
 def test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits):
@@ -330,6 +341,7 @@ def test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits):
     counter = task_prs['counter']
     exp_mat = exp_mat[:, counter+1:]
     test_digits = input_digits[train_prs['n_train'] + train_prs['n_train_ext']:]
+    encoding = task_prs['output_encoding']
 
     i00, i01, i10, i11 = 0, 0, 0, 0
 
@@ -343,6 +355,7 @@ def test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits):
     x_mat, r_mat, eps_mat, ext_z_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(ext_params, is_train=False)
     dmg_x_mat = np.zeros([np.shape(dmg_x)[0], test_steps])
     dmg_r_mat = np.zeros([np.shape(dmg_x)[0], test_steps])
+    err_mat = np.zeros([train_prs['n_test'],])
     trial = 0
 
     for i in range(test_steps):
@@ -354,7 +367,7 @@ def test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits):
         z_mat[i] = dmg_z
         zd_mat[:, i] = dmg_zd.reshape(-1)
 
-        ext_dx = -ext_x + dmg_g*(np.matmul(W, ext_r)) + np.matmul(ext_wf, dmg_z) + np.matmul(ext_wfd, ext_zd+dmg_zd) + np.matmul(ext_wi, exp_mat[:,i])
+        ext_dx = -ext_x + dmg_g*(np.matmul(W, ext_r) + np.matmul(new_wd, dmg_r)) + np.matmul(ext_wf, dmg_z) + np.matmul(ext_wfd, ext_zd+dmg_zd) + np.matmul(ext_wi, exp_mat[:,i])
         dmg_dx = -dmg_x + dmg_g*(np.matmul(dmg_J, dmg_r) + np.matmul(new_wi, ext_r)) + np.matmul(dmg_wf, dmg_z) + np.matmul(dmg_wfd, ext_zd+dmg_zd) + np.matmul(dmg_wi, exp_mat[:,i])
         ext_x = ext_x + (ext_dx * dt) / tau
         dmg_x = dmg_x + (dmg_dx * dt) / tau
@@ -440,6 +453,7 @@ def test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits):
                 dmg_x21 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i21 = 1
 
+            err_mat[trial] = encoding[sum(input_digits[trial][1])] - dmg_z
             print('Test Digits: ', test_digits[trial])
             print('z: ', np.around(2*(dmg_z)) / 2.0)
             trial += 1
@@ -449,7 +463,7 @@ def test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits):
     dmg_x_ICs = np.array([dmg_x00, dmg_x01, dmg_x10, dmg_x11])
     dmg_r_ICs = np.array([dmg_r00, dmg_r01, dmg_r10, dmg_r11])
 
-    return x_ICs, r_ICs, x_mat, dmg_x_ICs, dmg_r_ICs, dmg_x
+    return x_ICs, r_ICs, dmg_x, x_mat, err_mat, dmg_x_ICs, dmg_r_ICs, dmg_x_mat
 
 
 ext_params = set_all_parameters(**kwargs)
@@ -465,16 +479,56 @@ task = sum_task_experiment(ext_task_prs['n_digits'], ext_train_prs['n_train'], e
                            ext_net_prs['dt'], ext_task_prs['output_encoding'], ext_task_prs['keep_perms'], digits_rep, labels, ext_msc_prs['seed'])
 exp_mat, target_mat, dummy_mat, input_digits, output_digits = task.experiment()
 
-old_params, old_x, _, _, _ = load_data(name=ext_msc_prs['damaged_net'],prefix='train',dir=dir)
-old_x = old_x[:,-1]
+old_params, old_x, _, _, _, _, _ = load_data(name=ext_msc_prs['damaged_net'],prefix='train',dir=dir)
 old_params['model']['N'] = 1000
-old_x_ICs, old_r_ICs, _, old_x_mat = test_single(old_params, old_x, exp_mat, input_digits)
+old_x_ICs, old_r_ICs, _, old_x_mat, old_err_mat = test_single(old_params, old_x, exp_mat, input_digits)
+print('Average Error: ',np.mean(abs(old_err_mat)))
 
-print('\n')
+'''
+old_x_mat = old_x_mat[:,0:int(old_params['task']['t_trial']/old_params['network']['dt'])]
+pca = PCA(n_components=3)
+pca.fit(old_x_mat.T)
+pc_traj = pca.transform(old_x_mat.T)
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot3D(pc_traj[:,0],pc_traj[:,1],pc_traj[:,2],c='k')
+ax.scatter(pc_traj[0,0],pc_traj[0,1],pc_traj[0,2],c='b')
+ax.scatter(pc_traj[-1,0],pc_traj[-1,1],pc_traj[-1,2],c='r')
+ax.set_xlim([-1.5, 3.5])
+ax.set_ylim([-1, 2])
+ax.set_zlim([-1, 1])
+ax.set_xlabel('PC 1')
+ax.set_ylabel('PC 2')
+ax.set_zlabel('PC 3')
+ax.set_title('Trajectory for 1 + 1, Pre-Damage')
+'''
+
+print('Post-Damage Performance')
 ext_x, dmg_x, dmg_params, ext_params['model'] = externalize_neurons(old_x, old_params)
-dmg_x_ICs, dmg_r_ICs, _, dmg_x_mat = test_single(dmg_params, dmg_x, exp_mat, input_digits)
+dmg_x_ICs, dmg_r_ICs, _, dmg_x_mat, dmg_err_mat = test_single(dmg_params, dmg_x, exp_mat, input_digits)
+print('Average Error: ',np.mean(abs(dmg_err_mat)))
 
 print('\n')
 ext_x, dmg_x, dmg_x_mat, ext_params = train_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, target_mat, input_digits)
-x_ICs, r_ICs, ext_x, dmg_x_ICs, dmg_r_ICs, dmg_x = test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits)
+x_ICs, r_ICs, dmg_x, ext_x_mat, err_mat, dmg_x_ICs, dmg_r_ICs, dmg_x_mat = test_edge(ext_params, dmg_params, ext_x, dmg_x, exp_mat, input_digits)
+print('Average Error: ',np.mean(abs(err_mat)))
+
+'''
+dmg_x_mat = np.concatenate((dmg_x_mat[:,0:int(ext_task_prs['t_trial']/ext_net_prs['dt'])],ext_x_mat[:,0:int(ext_task_prs['t_trial']/ext_net_prs['dt'])]),axis=0)
+pc_traj = pca.transform(dmg_x_mat.T)
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot3D(pc_traj[:,0],pc_traj[:,1],pc_traj[:,2],c='k')
+ax.scatter(pc_traj[0,0],pc_traj[0,1],pc_traj[0,2],c='b')
+ax.scatter(pc_traj[-1,0],pc_traj[-1,1],pc_traj[-1,2],c='r')
+ax.set_xlim([-1.5, 3.5])
+ax.set_ylim([-1, 2])
+ax.set_zlim([-1, 1])
+ax.set_xlabel('PC 1')
+ax.set_ylabel('PC 2')
+ax.set_zlabel('PC 3')
+ax.set_title('Trajectory for 1 + 1, Feedback Network Configuration')
+plt.show()
+'''
+
 ph_params = set_posthoc_params(x_ICs, r_ICs, dmg_x_ICs=dmg_x_ICs, dmg_r_ICs=dmg_r_ICs)
