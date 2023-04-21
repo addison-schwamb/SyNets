@@ -31,7 +31,7 @@ def set_all_parameters(n_train, encoding, seed, damaged_net, synet):
     params['task'] = task_params
 
     train_params = dict()
-    #train_params['n_train'] = int(n_train)  # training steps
+    train_params['n_train'] = int(n_train[-1])  # training steps
     train_params['n_train_ext'] = int(0)
     train_params['n_test'] = int(20)      # test steps
     params['train'] = train_params
@@ -104,7 +104,7 @@ def zero_fat_mats_reuse(params, net_prs, is_train=True):
     u_mat = np.zeros(total_steps)
     z_mat = np.zeros(total_steps)
     zd_mat = np.zeros([2, total_steps])
-    rwd_mat = np.zeros(total_size)
+    rwd_mat = np.zeros(50*total_size)
     deltaW_mat = np.zeros(total_size)
 
     return x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat
@@ -120,16 +120,19 @@ def train_reuse(params, synet_params, dmg_params, synet_x, dmg_x, exp_mat, targe
     rng = np.random.RandomState(msc_prs['seed'])
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
     alpha, sigma2, max_grad = net_prs['alpha'], net_prs['sigma2'], net_prs['max_grad']
+    alphaR = net_prs['alphaR']
     N = net_prs['N']
     output = task_prs['output_encoding']
     train_steps = int((train_prs['n_train'] + train_prs['n_train_ext']) * task_prs['t_trial'] / net_prs['dt'])
     trial_steps = int((task_prs['t_trial']) / dt)
     Rbar = 0
+    n_correct = 0;
 
     Sigma, W, wo, wi = model_prs['Sigma'], model_prs['W'], model_prs['wo'], model_prs['wi']
     x = synet_x
     r = np.tanh(x)
     u = np.matmul(wo.T, r)
+    b = np.zeros([net_prs['N'],])
     eps = np.matmul(Sigma,rng.randn(N,1))
 
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
@@ -143,7 +146,10 @@ def train_reuse(params, synet_params, dmg_params, synet_x, dmg_x, exp_mat, targe
     dmg_x_mat = np.zeros([np.shape(dmg_x)[0], train_steps])
     trial = 0
     i = 0
+    rwd_ind = 0
     last_stop = 0
+    prev_correct = 0
+    R_prev = 0
     for i in range(train_steps):
         x_mat[:, i] = x.reshape(-1)
         dmg_x_mat[:, i] = dmg_x.reshape(-1)
@@ -169,8 +175,11 @@ def train_reuse(params, synet_params, dmg_params, synet_x, dmg_x, exp_mat, targe
             #print(target_mat[:,i])
             eps_r = np.zeros([N, N])
             eps_in = np.zeros([N, net_prs['d_input']])
+            eps_cum = np.zeros([N,1])
             R = 0.25 - abs(target_mat[:,i] - z)
-            rwd_mat[trial] = R
+            rwd_mat[rwd_ind] = R
+            Rbar = alphaR*Rbar + (1 - alphaR)*R
+            rwd_ind += 1
             #Rbar = np.mean(rwd_mat[:trial+1])
             steps_since_update = i - last_stop
 
@@ -183,30 +192,48 @@ def train_reuse(params, synet_params, dmg_params, synet_x, dmg_x, exp_mat, targe
                     input_cum += ((1 - dt) ** (k - 1)) * dt * np.concatenate((zd_mat[:, idx-k], exp_mat[:, idx-k]), axis=None)
                 eps_r += np.outer(eps_mat[:, idx], r_cum)
                 eps_in += np.outer(eps_mat[:, idx], input_cum)
+                eps_cum += eps_mat[:,idx].reshape([N,1])
 
             #print('Input Digits: ', input_digits[trial])
             #print('z: ', np.around(2*z) / 2.0)
             #print('R: ', R)
 
-            deltaW =  (alpha * dt / sigma2) * R * eps_r
+            deltaW =  (alpha * dt / sigma2) * (R) * eps_r
             if np.linalg.norm(deltaW,ord='fro') > max_grad:
                 deltaW = (max_grad/np.linalg.norm(deltaW,ord='fro'))*deltaW
-            deltawi = (alpha * dt / sigma2) * R * eps_in
+            deltawi = (alpha * dt / sigma2) * (R) * eps_in
+            deltab = (alpha * dt / sigma2) * (R)* eps_cum
             deltaW_mat[trial] = np.linalg.norm(deltaW,ord='fro')
 
             W += deltaW
             wi += deltawi
+            b += deltab.reshape([N,])
+            phi_s = (1 - 1/tau_phi)*phi_s + (1/tau_phi)*R
+            phi_l = (1 - 1/tau_phi)*phi_l + (1/tau_phi)*phi_s
+            phi = phi_s - phi_l;
+            R_prev = R
             last_stop = i
 
         if (i+1) % trial_steps == 0 and i != 0:
+            if trial in msc_prs['n_train']:
+                model_params = {'W': W, 'wo': wo, 'wi': wi, 'Sigma': Sigma, 'b': b}
+                synet_params['model'] = model_params
+                print('\n','n = ',trial)
+                _, _, _, _, _, _, _, _, _, n_correct = test_reuse(params, synet_params, dmg_params, x, dmg_x, exp_mat, input_digits)
+                print('Correct: ',n_correct)
+                #sigma2 = ((20 - n_correct - prev_correct)/20)*sigma2 + 0.001
+                #alphaR = ((20 - n_correct - prev_correct)/20)*alphaR
+                prev_correct = n_correct
+
             trial += 1
 
+        Sigma = np.diagflat(sigma2 * np.ones([N, 1]))
         eps = np.matmul(Sigma,rng.randn(N,1))
 
     toc = time.time()
     print('\n', 'train time = ', (toc-tic)/60)
 
-    model_params = {'W': W, 'wo': wo, 'wi': wi, 'Sigma': Sigma}
+    model_params = {'W': W, 'wo': wo, 'wi': wi, 'Sigma': Sigma, 'b': b}
     synet_params['model'] = model_params
     task_prs['counter'] = i
 
@@ -224,10 +251,10 @@ def test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_
     task_prs = params['task']
     msc_prs = params['msc']
     rng = np.random.RandomState(msc_prs['seed'])
-    W, wo, wi = model_prs['W'], model_prs['wo'], model_prs['wi']
+    W, wo, wi, b = model_prs['W'], model_prs['wo'], model_prs['wi'], model_prs['b']
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
     alpha = net_prs['alpha']
-    #Sigma, N = model_prs['Sigma'], net_prs['N']
+    Sigma, N = model_prs['Sigma'], net_prs['N']
     dmg_g, dmg_J, dmg_wi, dmg_wo = dmg_model_prs['g'], dmg_model_prs['J'], dmg_model_prs['wi'], dmg_model_prs['wo']
     dmg_wd, dmg_wf, dmg_wfd = dmg_model_prs['wd'], dmg_model_prs['wf'], dmg_model_prs['wfd']
     dmg_wi = dmg_wi[:,-3:]
@@ -237,13 +264,14 @@ def test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_
     counter = task_prs['counter']
     exp_mat = exp_mat[:, counter+1:]
     test_digits = input_digits[train_prs['n_train'] + train_prs['n_train_ext']:]
+    encoding = task_prs['output_encoding']
 
     i00, i01, i10, i11 = 0, 0, 0, 0
 
     x = x_train
     r = np.tanh(x)
     u = np.matmul(wo.T, r)
-    #eps = np.matmul(Sigma,rng.randn(N,1))
+    eps = np.matmul(Sigma,rng.randn(N,1))
     dmg_r = np.tanh(dmg_x)
     z = np.matmul(dmg_wo.T, dmg_r)
     zd = np.matmul(dmg_wd.T, dmg_r)
@@ -251,9 +279,11 @@ def test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_
     dmg_x_mat, dmg_r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(dmg_params, is_train=False)
     x_mat = np.zeros([net_prs['N'],np.shape(dmg_x_mat)[1]])
     r_mat = np.zeros([net_prs['N'],np.shape(dmg_x_mat)[1]])
+    err_mat = np.zeros([train_prs['n_test'],])
     trial = 0
+    n_correct = 0
 
-    for i in range(test_steps):
+    for i in range(test_steps-1):
         dmg_x_mat[:, i] = dmg_x.reshape(-1)
         dmg_r_mat[:, i] = dmg_r.reshape(-1)
         x_mat[:, i] = x.reshape(-1)
@@ -263,7 +293,7 @@ def test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_
         zd_mat[:, i] = zd.reshape(-1)
 
         input = np.concatenate((zd,exp_mat[:,i]), axis=None)
-        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],])))
+        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],]))) + eps.reshape([N,])
         r = np.tanh(x)
         u = np.matmul(wo.T, r)
         dmg_input = np.concatenate((u,exp_mat[:,i]),axis=None)
@@ -349,6 +379,9 @@ def test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_
                 dmg_x21 = dmg_x_mat[:, i-1][:, np.newaxis]
                 i21 = 1
 
+            err_mat[trial] = encoding[sum(test_digits[trial][1])] - z
+            if np.around(2*z)/2.0 == encoding[sum(test_digits[trial][1])]:
+                n_correct += 1
             print('Test Digits: ', test_digits[trial])
             print('z: ', np.around(2*z) / 2.0)
             trial += 1
@@ -358,7 +391,7 @@ def test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_
     dmg_x_ICs = np.array([dmg_x00, dmg_x01, dmg_x10, dmg_x11])
     dmg_r_ICs = np.array([dmg_r00, dmg_r01, dmg_r10, dmg_r11])
 
-    return x_ICs, r_ICs, x_mat, dmg_x_ICs, dmg_r_ICs, dmg_x
+    return x_ICs, r_ICs, x_mat, dmg_x_ICs, dmg_r_ICs, dmg_x, dmg_x_mat, u_mat, err_mat, n_correct
 
 params = set_all_parameters(**kwargs)
 task_prs = params['task']
@@ -369,18 +402,20 @@ dmg_params, dmg_x = load_data(name=msc_prs['damaged_net'],prefix='damaged',dir=d
 dmg_params = add_input_weights(dmg_params)
 synet_params, synet_x = load_data(name=msc_prs['synet'], prefix='synet_trained', dir=dir)
 
-for n in msc_prs['n_train']:
-    params['train']['n_train'] = n
-    task = sum_task_experiment(task_prs['n_digits'], train_prs['n_train'], train_prs['n_train_ext'], train_prs['n_test'], task_prs['time_intervals'],
-                               synet_params['network']['dt'], task_prs['output_encoding'], task_prs['keep_perms'] , digits_rep, labels, msc_prs['seed'])
-    exp_mat, target_mat, dummy_mat, input_digits, output_digits = task.experiment()
+train_steps = int((train_prs['n_train'] + train_prs['n_train_ext']) * task_prs['t_trial'] / synet_params['network']['dt'])
+params['task']['counter'] = train_steps
 
-    print('Training with Pre-trained SyNet, n = ',n)
-    x_train, dmg_x, dmg_x_mat_trained, synet_params = train_reuse(params, synet_params, dmg_params, synet_x[:,-1], dmg_x, exp_mat, target_mat, input_digits)
-    x_ICs, r_ICs, internal_x, dmg_x_ICs, dmg_r_ICs, dmg_x = test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
-    params['network'] = synet_params['network']
-    params['model'] = synet_params['model']
-    params['msc']['feedback'] = True
+task = sum_task_experiment(task_prs['n_digits'], train_prs['n_train'], train_prs['n_train_ext'], train_prs['n_test'], task_prs['time_intervals'],
+    synet_params['network']['dt'], task_prs['output_encoding'], task_prs['keep_perms'] , digits_rep, labels, msc_prs['seed'])
+exp_mat, target_mat, dummy_mat, input_digits, output_digits = task.experiment()
+
+print('Training with Pre-trained SyNet')
+x_train, dmg_x, dmg_x_mat_trained, synet_params = train_reuse(params, synet_params, dmg_params, synet_x[:,-1], dmg_x, exp_mat, target_mat, input_digits)
+x_ICs, r_ICs, internal_x, dmg_x_ICs, dmg_r_ICs, dmg_x, dmg_x_mat, u_mat, err_mat, n_correct = test_reuse(params, synet_params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
+print('Correct: ',n_correct)
+params['network'] = synet_params['network']
+params['model'] = synet_params['model']
+params['msc']['feedback'] = True
 #ph_params = set_posthoc_params(x_ICs, r_ICs, dmg_x_ICs=dmg_x_ICs, dmg_r_ICs=dmg_r_ICs)
 #trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(params, ph_params, digits_rep, labels, synet=True, dmg_params=dmg_params)
 #print('SyNet Attractor: ', attractor)

@@ -3,7 +3,8 @@ import json
 import sys
 import pickle
 import numpy as np
-dir = ''
+load_dir = 'single_nets/'
+save_dir = 'damaged_nets/'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', type=json.loads)
@@ -31,7 +32,7 @@ def save_data_variable_size(*vars1, name=None, prefix='train', dir=None):
 
 init_params = set_all_parameters(**kwargs)
 pct_rmv = init_params['pct_rmv']
-params, internal_x, x_ICs, r_ICs, error_ratio = load_data(name=init_params['name'],prefix='train',dir=dir)
+params, internal_x, x_ICs, r_ICs, error_ratio = load_data(name=init_params['name'],prefix='train',dir=load_dir)
 internal_x = internal_x[:,-1]
 
 xlen = np.size(internal_x)
@@ -65,4 +66,4 @@ model_prs['wfd'] = wfd
 model_prs['N'] = np.size(internal_x)
 params['model'] = model_prs
 
-save_data_variable_size(params, internal_x, x_ICs, r_ICs, error_ratio, name=init_params['name'], prefix='damaged', dir=dir)
+save_data_variable_size(params, internal_x, x_ICs, r_ICs, error_ratio, name=init_params['name'], prefix='damaged', dir=save_dir)

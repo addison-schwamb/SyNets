@@ -45,7 +45,7 @@ def plot_matrix(mat):
     plt.colorbar(im)
     plt.show()
 
-def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
+def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
     tic = time.time()
 
     dmg_model_prs = dmg_params['model']
@@ -56,8 +56,8 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     feedback = msc_prs['feedback']
     rng = np.random.RandomState(msc_prs['seed'])
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
-    alpha, sigma2, max_grad = net_prs['alpha'], net_prs['sigma2'], net_prs['max_grad']
-    #alphaR = net_prs['alphaR']
+    alpha, sigma20, max_grad = net_prs['alpha'], net_prs['sigma2'], net_prs['max_grad']
+    alphaR, tau_phi, tau_p = net_prs['alphaR'], net_prs['tau_phi'], net_prs['tau_p']
     N = net_prs['N']
     output = task_prs['output_encoding']
     train_steps = int((train_prs['n_train'] + train_prs['n_train_ext']) * task_prs['t_trial'] / net_prs['dt'])
@@ -66,6 +66,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     n_correct = 0
 
     Sigma, x, W, wo, wi = initialize_net(params)
+    sigma2 = sigma20
     r = np.tanh(x)
     u = np.matmul(wo.T, r)
     b = np.zeros([net_prs['N'],1])
@@ -80,10 +81,16 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
 
     x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=True)
     dmg_x_mat = np.zeros([np.shape(dmg_x)[0], train_steps])
+    phi_mat = np.zeros([50*train_prs['n_train']])
+    sig_mat = np.zeros([50*train_prs['n_train']])
+    sig_mat[0] = sigma20
     trial = 0
     i = 0
     rwd_ind = 0
     last_stop = 0
+    prev_correct = 0
+    phi_s = R_prev
+    phi_l = R_prev
     for i in range(train_steps):
         x_mat[:, i] = x.reshape(-1)
         dmg_x_mat[:, i] = dmg_x.reshape(-1)
@@ -97,7 +104,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
             input = np.concatenate((zd,exp_mat[:,i]), axis=None)
         else:
             input = exp_mat[:,i]
-        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1])) + b) + eps
+        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) + eps
         #x_eps = x + eps
         r = np.tanh(x)
         #r_eps = np.tanh(x_eps)
@@ -117,7 +124,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
             eps_cum = np.zeros([N,1])
             R = 0.25 - abs(target_mat[:,i] - z)
             rwd_mat[0,rwd_ind] = R
-            Rbar = 0.3*Rbar + 0.7*R
+            Rbar = alphaR*Rbar + (1 - alphaR)*R
             #Rbar = np.mean(rwd_mat[:rwd_ind+1])
             rwd_mat[1,rwd_ind] = Rbar
             rwd_ind += 1
@@ -141,16 +148,26 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
             #print('z: ', np.around(2*z) / 2.0)
             #print('R: ', R)
 
-            deltaW =  (alpha * dt / sigma2) * (R - Rbar) * eps_r
+            deltaW =  (alpha * dt / sigma2) * (R) * eps_r
             if np.linalg.norm(deltaW,ord='fro') > max_grad:
                 deltaW = (max_grad/np.linalg.norm(deltaW,ord='fro'))*deltaW
-            deltawi = (alpha * dt / sigma2) * (R - Rbar) * eps_in
-            deltab = (alpha * dt / sigma2) * (R - Rbar) * eps_cum
+            deltawi = (alpha * dt / sigma2) * (R) * eps_in
+            deltab = (alpha * dt / sigma2) * (R) * eps_cum
             deltaW_mat[trial] = np.linalg.norm(deltaW,ord='fro')
 
+            if rwd_ind == 1:
+                phi_s = 0 #R
+                phi_l = 0 #R
+            phi_s = (1 - 1/tau_phi)*phi_s + (1/tau_phi)*R #(np.exp(-np.var(rwd_mat[0,0:rwd_ind])))
+            phi_l = (1 - 1/tau_phi)*phi_l + (1/tau_phi)*phi_s
+            phi = phi_l
+            phi_mat[rwd_ind-1] = phi
+            sigma2 = sigma20*np.exp(-phi/tau_p)
+            sig_mat[rwd_ind] = sigma2
             W += deltaW
             wi += deltawi
             b += deltab
+            R_prev = R
             last_stop = i
 
         if (i+1) % trial_steps == 0 and i != 0:
@@ -159,10 +176,22 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
                 params['model'] = model_params
                 print('\n','n = ', trial)
                 _, _, _, _, _, _, _, _, _, n_correct = test(params, dmg_params, x, dmg_x, exp_mat, input_digits)
-                sigma2 = ((20 - n_correct)/20)*sigma2
+                print('Correct: ',n_correct)
+                print('Mean Reward: ',np.mean(rwd_mat[0,0:rwd_ind]))
+                print('Reward Variance: ',np.exp(-np.var(rwd_mat[0,0:rwd_ind])))
                 plt.figure()
+                plt.plot(phi_mat[0:rwd_ind])
                 plt.plot(rwd_mat[0,0:rwd_ind])
+                plt.figure()
+                plt.plot(sig_mat[0:rwd_ind])
                 plt.show()
+                #sigma2 = ((20 - n_correct - prev_correct)/20)*sigma2 + 0.001
+                #alphaR = ((20 - n_correct - prev_correct)/20)*alphaR
+                prev_correct = n_correct
+
+                #plt.figure()
+                #plt.plot(rwd_mat[0,0:rwd_ind])
+                #plt.show()
             trial += 1
 
         Sigma = np.diagflat(sigma2 * np.ones([N, 1]))
@@ -176,7 +205,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits):
     task_prs['counter'] = i
 
     plt.figure()
-    plt.plot(rwd_mat[0,:])
+    plt.plot(phi_mat)
     #plt.figure()
     #plt.plot(deltaW_mat)
     plt.show()
@@ -236,8 +265,10 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
             input = np.concatenate((zd,exp_mat[:,i]), axis=None)
         else:
             input = exp_mat[:,i]
-        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1])) + b) + eps
+        x = (1 - dt)*x + dt*(np.matmul(W, r) + np.matmul(wi, input.reshape([net_prs['d_input'],1]))) + eps
+        #x_eps = x + eps
         r = np.tanh(x)
+        #r_eps = np.tanh(x_eps)
         u = np.matmul(wo.T, r)
         dmg_input = np.concatenate((u,exp_mat[:,i]),axis=None)
         dmg_dx = -dmg_x + dmg_g * np.matmul(dmg_J, dmg_r) + np.matmul(dmg_wf, z) + np.matmul(dmg_wi, dmg_input.reshape([dmg_net_prs['d_input'],])) + np.matmul(dmg_wfd, zd)

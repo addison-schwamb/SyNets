@@ -23,6 +23,9 @@ def set_all_parameters(alpha, sigma2, max_grad, n_train, encoding, seed, damaged
     net_params['alpha'] = alpha
     net_params['sigma2'] = sigma2
     net_params['max_grad'] = max_grad
+    net_params['alphaR'] = 0.3
+    net_params['tau_phi'] = 300
+    net_params['tau_p'] = 300
     if feedback:
         net_params['d_input'] = 4
     else:
@@ -150,14 +153,16 @@ old_params['model']['N'] = 1000
 _, _, _, old_x_mat, old_err_mat = test_single(old_params, old_x, exp_mat, input_digits)
 print('Average Error: ',np.mean(abs(old_err_mat)))
 save_data_variable_size(old_params, old_x, old_x_mat, old_err_mat, old_x_ICs, old_r_ICs, old_error_ratio, name=msc_prs['damaged_net'],prefix='train',dir=dir)
+'''
 
 print('Post-Damage Performance')
 dmg_params['network']['d_input'] = 2
 dmg_x_ICs, dmg_r_ICs, dmg_x, dmg_x_mat, dmg_err_mat = test_single(dmg_params, dmg_x, exp_mat, input_digits)
 print('Average Error: ',np.mean(abs(dmg_err_mat)))
+R_prev = 0.25 - np.mean(abs(dmg_err_mat))
 dmg_ph_params = set_posthoc_params(dmg_x_ICs, dmg_r_ICs)
 save_data_variable_size(dmg_params, dmg_x, dmg_x_mat, dmg_err_mat, dmg_x_ICs, dmg_r_ICs, dmg_error_ratio, name=msc_prs['damaged_net'],prefix='damaged',dir=dir)
-'''
+
 #trajectories, unique_z_mean, unique_zd_mean, attractor = attractor_type(dmg_params, dmg_ph_params, digits_rep, labels)
 #print('Post-Damage Attractor: ',attractor)
 #save_data_variable_size(ph_params, trajectories, unique_z_mean, unique_zd_mean, attractor, name=params['msc']['damaged_net'], prefix='damaged_fp_test', dir=dir)
@@ -168,7 +173,7 @@ dmg_params = add_input_weights(dmg_params)
 # train new network
 train_steps = int((train_prs['n_train'] + train_prs['n_train_ext']) * task_prs['t_trial'] / net_prs['dt'])
 params['task']['counter'] = train_steps
-x_train, dmg_x, dmg_x_mat_trained, u_mat, params = train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits)
+x_train, dmg_x, dmg_x_mat_trained, u_mat, params = train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev)
 x_ICs, r_ICs, internal_x, dmg_x_ICs, dmg_r_ICs, dmg_x, dmg_x_mat, u_mat, err_mat, _ = test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits)
 print('Average Error: ',np.mean(abs(err_mat)))
 print('Energy (2-norm of u): ',np.linalg.norm(u_mat,2))
