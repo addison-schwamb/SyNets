@@ -23,9 +23,11 @@ def set_all_parameters(alpha, sigma2, max_grad, n_train, encoding, seed, damaged
     net_params['alpha'] = alpha
     net_params['sigma2'] = sigma2
     net_params['max_grad'] = max_grad
-    net_params['alphaR'] = 0.3
-    net_params['tau_phi'] = 300
-    net_params['tau_p'] = 300
+    net_params['tau_H'] = 2500
+    net_params['tau_phi'] = 3500
+    net_params['tau_alpha'] = 8
+    net_params['tau_sigma'] = 230
+    net_params['var_smooth'] = 1499
     if feedback:
         net_params['d_input'] = 4
     else:

@@ -35,10 +35,14 @@ def zero_fat_mats(params, is_train=True):
     u_mat = np.zeros(total_steps)
     z_mat = np.zeros(total_steps)
     zd_mat = np.zeros([2, total_steps])
-    rwd_mat = np.zeros([2,50*total_size])
+    rwd_mat = np.zeros(total_size)
     deltaW_mat = np.zeros(total_size)
+    H_mat = np.zeros(total_size)
+    var_mat = np.zeros(total_size)
+    sigma_mat = np.zeros(total_size)
+    alpha_mat = np.zeros(total_size)
 
-    return x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat
+    return x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat, H_mat, var_mat, alpha_mat, sigma_mat
 
 def plot_matrix(mat):
     im = plt.imshow(mat)
@@ -56,16 +60,17 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
     feedback = msc_prs['feedback']
     rng = np.random.RandomState(msc_prs['seed'])
     dt, tau = net_prs['dt'], dmg_net_prs['tau']
-    alpha, sigma20, max_grad = net_prs['alpha'], net_prs['sigma2'], net_prs['max_grad']
-    alphaR, tau_phi, tau_p = net_prs['alphaR'], net_prs['tau_phi'], net_prs['tau_p']
+    alpha0, sigma20, max_grad = net_prs['alpha'], net_prs['sigma2'], net_prs['max_grad']
+    tau_phi, tau_alpha, tau_sigma = net_prs['tau_phi'], net_prs['tau_alpha'], net_prs['tau_sigma']
+    tau_H, var_smooth = net_prs['tau_H'], net_prs['var_smooth']
     N = net_prs['N']
     output = task_prs['output_encoding']
     train_steps = int((train_prs['n_train'] + train_prs['n_train_ext']) * task_prs['t_trial'] / net_prs['dt'])
     trial_steps = int((task_prs['t_trial']) / dt)
-    Rbar = 0
     n_correct = 0
 
     Sigma, x, W, wo, wi = initialize_net(params)
+    alpha = alpha0
     sigma2 = sigma20
     r = np.tanh(x)
     u = np.matmul(wo.T, r)
@@ -79,18 +84,18 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
     z = np.matmul(dmg_wo.T, dmg_r)
     zd = np.matmul(dmg_wd.T, dmg_r)
 
-    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=True)
+    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat, H_mat, var_mat, alpha_mat, sigma_mat = zero_fat_mats(params, is_train=True)
     dmg_x_mat = np.zeros([np.shape(dmg_x)[0], train_steps])
     phi_mat = np.zeros([50*train_prs['n_train']])
     sig_mat = np.zeros([50*train_prs['n_train']])
     sig_mat[0] = sigma20
     trial = 0
     i = 0
-    rwd_ind = 0
     last_stop = 0
     prev_correct = 0
-    phi_s = R_prev
-    phi_l = R_prev
+    phi_s = 0
+    phi_l = 0
+    phi = 0
     for i in range(train_steps):
         x_mat[:, i] = x.reshape(-1)
         dmg_x_mat[:, i] = dmg_x.reshape(-1)
@@ -122,12 +127,8 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
             eps_r = np.zeros([N, N])
             eps_in = np.zeros([N, net_prs['d_input']])
             eps_cum = np.zeros([N,1])
-            R = 0.25 - abs(target_mat[:,i] - z)
-            rwd_mat[0,rwd_ind] = R
-            Rbar = alphaR*Rbar + (1 - alphaR)*R
-            #Rbar = np.mean(rwd_mat[:rwd_ind+1])
-            rwd_mat[1,rwd_ind] = Rbar
-            rwd_ind += 1
+            R = -abs(target_mat[:,i] - z)
+            rwd_mat[trial] = R
             steps_since_update = i - last_stop
 
             for j in range(1, steps_since_update+1):
@@ -152,22 +153,21 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
             if np.linalg.norm(deltaW,ord='fro') > max_grad:
                 deltaW = (max_grad/np.linalg.norm(deltaW,ord='fro'))*deltaW
             deltawi = (alpha * dt / sigma2) * (R) * eps_in
-            deltab = (alpha * dt / sigma2) * (R) * eps_cum
             deltaW_mat[trial] = np.linalg.norm(deltaW,ord='fro')
 
-            if rwd_ind == 1:
-                phi_s = 0 #R
-                phi_l = 0 #R
-            phi_s = (1 - 1/tau_phi)*phi_s + (1/tau_phi)*R #(np.exp(-np.var(rwd_mat[0,0:rwd_ind])))
+            H = np.exp((-np.var(rwd_mat[max(0,trial-var_smooth):trial+1]) - abs(R))/tau_H) + (1/2) * np.log(2*np.pi*np.e)
+            H_mat[trial] = H
+            var_mat[trial] = np.var(rwd_mat[max(0,trial-var_smooth):trial+1])
+            phi_s = (1 - 1/tau_phi)*phi_s + (1/tau_phi)*np.exp(-H)
             phi_l = (1 - 1/tau_phi)*phi_l + (1/tau_phi)*phi_s
-            phi = phi_l
-            phi_mat[rwd_ind-1] = phi
-            sigma2 = sigma20*np.exp(-phi/tau_p)
-            sig_mat[rwd_ind] = sigma2
+            phi += phi_l
+            phi_mat[trial] = phi
+            alpha_mat[trial] = alpha
+            sig_mat[trial] = sigma2
+            sigma2 = sigma20*np.exp(-phi/tau_sigma)
+            alpha = sigma2*(alpha0/sigma20)*np.exp(-phi/tau_alpha)
             W += deltaW
             wi += deltawi
-            b += deltab
-            R_prev = R
             last_stop = i
 
         if (i+1) % trial_steps == 0 and i != 0:
@@ -177,13 +177,17 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
                 print('\n','n = ', trial)
                 _, _, _, _, _, _, _, _, _, n_correct = test(params, dmg_params, x, dmg_x, exp_mat, input_digits)
                 print('Correct: ',n_correct)
-                print('Mean Reward: ',np.mean(rwd_mat[0,0:rwd_ind]))
-                print('Reward Variance: ',np.exp(-np.var(rwd_mat[0,0:rwd_ind])))
+                print('Mean Reward: ',np.mean(rwd_mat[0:trial]))
+                print('Reward Variance: ',np.exp(-np.var(rwd_mat[0:trial])))
                 plt.figure()
-                plt.plot(phi_mat[0:rwd_ind])
-                plt.plot(rwd_mat[0,0:rwd_ind])
+                plt.plot(phi_mat[0:trial])
+                plt.title('Phi')
                 plt.figure()
-                plt.plot(sig_mat[0:rwd_ind])
+                plt.plot(rwd_mat[0:trial])
+                plt.title('Reward')
+                plt.figure()
+                plt.plot(sig_mat[0:trial])
+                plt.title('Sigma')
                 plt.show()
                 #sigma2 = ((20 - n_correct - prev_correct)/20)*sigma2 + 0.001
                 #alphaR = ((20 - n_correct - prev_correct)/20)*alphaR
@@ -245,7 +249,7 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
     z = np.matmul(dmg_wo.T, dmg_r)
     zd = np.matmul(dmg_wd.T, dmg_r)
 
-    dmg_x_mat, dmg_r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(dmg_params, is_train=False)
+    dmg_x_mat, dmg_r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat, _, _, _, _ = zero_fat_mats(dmg_params, is_train=False)
     x_mat = np.zeros([net_prs['N'],np.shape(dmg_x_mat)[1]])
     r_mat = np.zeros([net_prs['N'],np.shape(dmg_x_mat)[1]])
     err_mat = np.zeros([train_prs['n_test'],])
@@ -389,7 +393,7 @@ def test_single(params, x, exp_mat, input_digits):
     z = np.matmul(wo.T, r)
     zd = np.matmul(wd.T, r)
 
-    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat = zero_fat_mats(params, is_train=False)
+    x_mat, r_mat, eps_mat, u_mat, z_mat, zd_mat, rwd_mat, deltaW_mat, _, _, _, _ = zero_fat_mats(params, is_train=False)
     err_mat = np.zeros([train_prs['n_test'],])
     trial = 0
 
