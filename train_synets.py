@@ -121,14 +121,15 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
         z = np.matmul(dmg_wo.T, dmg_r)
         zd = np.matmul(dmg_wd.T, dmg_r)
 
-        #if (i+1) % trial_steps == 0 and i != 0:
-        if np.any(target_mat[:, i] != 0.):
+        if (i+1) % trial_steps == 0 and i != 0:
+        #if np.any(target_mat[:, i] != 0.):
             #print(target_mat[:,i])
             eps_r = np.zeros([N, N])
             eps_in = np.zeros([N, net_prs['d_input']])
             eps_cum = np.zeros([N,1])
             R = -abs(target_mat[:,i] - z)
             rwd_mat[trial] = R
+            #print('z: ', z, 'R: ', R)
             steps_since_update = i - last_stop
 
             for j in range(1, steps_since_update+1):
@@ -149,13 +150,13 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
             #print('z: ', np.around(2*z) / 2.0)
             #print('R: ', R)
 
-            deltaW =  (alpha * dt / sigma2) * (R) * eps_r
+            deltaW =  (alpha * dt / sigma2) * (R - 0.5*R_prev) * eps_r
             if np.linalg.norm(deltaW,ord='fro') > max_grad:
                 deltaW = (max_grad/np.linalg.norm(deltaW,ord='fro'))*deltaW
-            deltawi = (alpha * dt / sigma2) * (R) * eps_in
+            deltawi = (alpha * dt / sigma2) * (R - 0.5*R_prev) * eps_in
             deltaW_mat[trial] = np.linalg.norm(deltaW,ord='fro')
 
-            H = np.exp((-np.var(rwd_mat[max(0,trial-var_smooth):trial+1]) - abs(R))/tau_H) + (1/2) * np.log(2*np.pi*np.e)
+            H = np.exp((-np.var(rwd_mat[max(0,trial-var_smooth):trial+1]) - abs(R) + 0.5*abs(R_prev))/tau_H) + (1/2) * np.log(2*np.pi*np.e)
             H_mat[trial] = H
             var_mat[trial] = np.var(rwd_mat[max(0,trial-var_smooth):trial+1])
             phi_s = (1 - 1/tau_phi)*phi_s + (1/tau_phi)*np.exp(-H)
@@ -168,6 +169,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
             alpha = sigma2*(alpha0/sigma20)*np.exp(-phi/tau_alpha)
             W += deltaW
             wi += deltawi
+            R_prev = R
             last_stop = i
 
         if (i+1) % trial_steps == 0 and i != 0:
@@ -180,14 +182,16 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
                 print('Mean Reward: ',np.mean(rwd_mat[0:trial]))
                 print('Reward Variance: ',np.exp(-np.var(rwd_mat[0:trial])))
                 plt.figure()
-                plt.plot(phi_mat[0:trial])
-                plt.title('Phi')
-                plt.figure()
                 plt.plot(rwd_mat[0:trial])
                 plt.title('Reward')
+                '''
                 plt.figure()
                 plt.plot(sig_mat[0:trial])
                 plt.title('Sigma')
+                plt.figure()
+                plt.plot(alpha_mat[0:trial])
+                plt.title('Alpha')
+                '''
                 plt.show()
                 #sigma2 = ((20 - n_correct - prev_correct)/20)*sigma2 + 0.001
                 #alphaR = ((20 - n_correct - prev_correct)/20)*alphaR
@@ -209,9 +213,7 @@ def train(params, dmg_params, dmg_x, exp_mat, target_mat, input_digits, R_prev):
     task_prs['counter'] = i
 
     plt.figure()
-    plt.plot(phi_mat)
-    #plt.figure()
-    #plt.plot(deltaW_mat)
+    plt.plot(rwd_mat)
     plt.show()
 
     return x, dmg_x, dmg_x_mat, u_mat, params
@@ -362,12 +364,17 @@ def test(params, dmg_params, x_train, dmg_x, exp_mat, input_digits):
                 n_correct += 1
             print('Test Digits: ', test_digits[trial])
             print('z: ', np.around(2*z) / 2.0)
+            #print('z: ', z)
             trial += 1
 
-    x_ICs = np.array([x00, x01, x10, x11])
-    r_ICs = np.array([r00, r01, r10, r11])
-    dmg_x_ICs = np.array([dmg_x00, dmg_x01, dmg_x10, dmg_x11])
-    dmg_r_ICs = np.array([dmg_r00, dmg_r01, dmg_r10, dmg_r11])
+    #x_ICs = np.array([x00, x01, x10, x11])
+    x_ICs = np.array([x01])
+    #r_ICs = np.array([r00, r01, r10, r11])
+    r_ICs = np.array([r01])
+    #dmg_x_ICs = np.array([dmg_x00, dmg_x01, dmg_x10, dmg_x11])
+    dmg_x_ICs = np.array([dmg_x01])
+    #dmg_r_ICs = np.array([dmg_r00, dmg_r01, dmg_r10, dmg_r11])
+    dmg_r_ICs = np.array([dmg_r01])
 
     return x_ICs, r_ICs, x_mat, dmg_x_ICs, dmg_r_ICs, dmg_x, dmg_x_mat, u_mat, err_mat, n_correct
 
@@ -468,7 +475,9 @@ def test_single(params, x, exp_mat, input_digits):
             print('z: ', np.around(2*z) / 2.0)
             trial += 1
 
-    x_ICs = np.array([x00, x01, x10, x11])
-    r_ICs = np.array([r00, r01, r10, r11])
+    #x_ICs = np.array([x00, x01, x10, x11])
+    x_ICs = np.array([x01])
+    #r_ICs = np.array([r00, r01, r10, r11])
+    r_ICs = np.array([r01])
 
     return x_ICs, r_ICs, x, x_mat, err_mat
